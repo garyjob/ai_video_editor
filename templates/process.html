@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Processing Queue - Video Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .section {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            color: #333;
+        }
+        
+        .input-group {
+            margin-bottom: 16px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 120px;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #4285f4;
+            box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 12px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        button.primary {
+            background: #4285f4;
+            color: white;
+        }
+        
+        button.primary:hover:not(:disabled) {
+            background: #357ae8;
+        }
+        
+        button.secondary {
+            background: #f1f1f1;
+            color: #333;
+        }
+        
+        button.secondary:hover:not(:disabled) {
+            background: #e8e8e8;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .queue-item {
+            padding: 16px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            background: #fafafa;
+        }
+        
+        .queue-item.complete {
+            border-color: #34a853;
+            background: #f0f8f4;
+        }
+        
+        .queue-item.processing {
+            border-color: #fbbc04;
+            background: #fffbf0;
+        }
+        
+        .queue-item.error {
+            border-color: #ea4335;
+            background: #fef0ef;
+        }
+        
+        .queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .queue-title {
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-queued {
+            background: #e8e8e8;
+            color: #666;
+        }
+        
+        .status-processing {
+            background: #fbbc04;
+            color: #333;
+        }
+        
+        .status-complete {
+            background: #34a853;
+            color: white;
+        }
+        
+        .status-error {
+            background: #ea4335;
+            color: white;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #4285f4;
+            transition: width 0.3s;
+        }
+        
+        .queue-details {
+            font-size: 13px;
+            color: #666;
+            margin-top: 8px;
+        }
+        
+        .queue-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .queue-actions button {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .empty-queue {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .analysis-results {
+            margin-top: 20px;
+        }
+        
+        .analysis-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 16px;
+            background: #fafafa;
+        }
+        
+        .analysis-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .analysis-summary {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        
+        .transcript-preview {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+            margin-bottom: 8px;
+        }
+        
+        .transcript-segment {
+            margin-bottom: 4px;
+            color: #555;
+        }
+        
+        .grok-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .grok-section h2 {
+            color: white;
+            margin-bottom: 12px;
+        }
+        
+        .grok-section p {
+            margin-bottom: 16px;
+            opacity: 0.9;
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+        
+        .message.error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+        
+        .message.success {
+            background: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Video Editor - YouTube Shorts</h1>
+            <p class="subtitle">Create vertical videos (9:16) from 15-60 seconds</p>
+        </header>
+        
+        <div class="section">
+            <h2>Add Videos to Queue</h2>
+            
+            <!-- File Upload Area -->
+            <div id="uploadArea" style="
+                border: 2px dashed #ddd;
+                border-radius: 8px;
+                padding: 40px;
+                text-align: center;
+                background: #fafafa;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-bottom: 16px;
+            " onmouseover="this.style.borderColor='#4285f4'; this.style.background='#f0f7ff';" 
+               onmouseout="this.style.borderColor='#ddd'; this.style.background='#fafafa';">
+                <input type="file" id="fileInput" multiple accept="video/*" style="display: none;" />
+                <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
+                <div style="font-size: 16px; font-weight: 500; margin-bottom: 8px; color: #333;">
+                    Click to select videos or drag & drop here
+                </div>
+                <div style="font-size: 13px; color: #666;">
+                    Supported formats: MP4, MOV, AVI, MKV, WebM
+                </div>
+            </div>
+            
+            <!-- Selected Files List -->
+            <div id="selectedFiles" style="display: none; margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #555;">
+                    Selected Videos:
+                </label>
+                <div id="filesList" style="
+                    background: #f8f9fa;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 12px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                "></div>
+            </div>
+            
+            <div class="button-group">
+                <button class="primary" id="addToQueue" disabled>➕ Add to Queue</button>
+                <button class="secondary" id="clearSelection">Clear Selection</button>
+            </div>
+            <div id="inputMessage"></div>
+        </div>
+        
+        <div class="section">
+            <h2>Processing Queue (<span id="queueCount">0</span> videos)</h2>
+            <div id="queueContainer">
+                <div class="empty-queue">No videos in queue. Add videos above to get started.</div>
+            </div>
+        </div>
+        
+        <div class="section analysis-results" id="resultsSection" style="display: none;">
+            <h2>Analysis Results</h2>
+            <div id="resultsContainer"></div>
+        </div>
+        
+        <div class="section grok-section" id="grokSection" style="display: none;">
+            <h2>🤖 Ready for AI Processing</h2>
+            <p>All videos have been analyzed. Click below to generate YouTube Short with Grok.</p>
+            <button class="primary" id="processWithGrok" style="background: white; color: #667eea;">🎬 Process with Grok</button>
+        </div>
+    </div>
+    
+    <script>
+        // Queue management
+        let queue = [];
+        let analysisResults = {};
+        let selectedFiles = [];
+        
+        // DOM elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const selectedFilesDiv = document.getElementById('selectedFiles');
+        const filesListDiv = document.getElementById('filesList');
+        const addToQueueBtn = document.getElementById('addToQueue');
+        const clearSelectionBtn = document.getElementById('clearSelection');
+        const queueContainer = document.getElementById('queueContainer');
+        const queueCount = document.getElementById('queueCount');
+        const inputMessage = document.getElementById('inputMessage');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const grokSection = document.getElementById('grokSection');
+        const processWithGrokBtn = document.getElementById('processWithGrok');
+        
+        // File selection handlers
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#4285f4';
+            uploadArea.style.background = '#f0f7ff';
+        });
+        
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#ddd';
+            uploadArea.style.background = '#fafafa';
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#ddd';
+            uploadArea.style.background = '#fafafa';
+            
+            const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('video/'));
+            handleFiles(files);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            handleFiles(files);
+        });
+        
+        function handleFiles(files) {
+            selectedFiles = files;
+            updateSelectedFilesDisplay();
+            addToQueueBtn.disabled = files.length === 0;
+        }
+        
+        function updateSelectedFilesDisplay() {
+            if (selectedFiles.length === 0) {
+                selectedFilesDiv.style.display = 'none';
+                return;
+            }
+            
+            selectedFilesDiv.style.display = 'block';
+            filesListDiv.innerHTML = selectedFiles.map((file, index) => `
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px;
+                    margin-bottom: 4px;
+                    background: white;
+                    border-radius: 4px;
+                ">
+                    <span style="font-size: 13px; color: #333;">${file.name}</span>
+                    <span style="font-size: 12px; color: #666;">${formatFileSize(file.size)}</span>
+                </div>
+            `).join('');
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        // Add videos to queue
+        addToQueueBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) {
+                showMessage(inputMessage, 'Please select at least one video file', 'error');
+                return;
+            }
+            
+            addToQueueBtn.disabled = true;
+            addToQueueBtn.textContent = 'Uploading...';
+            
+            try {
+                // Upload files using FormData
+                const formData = new FormData();
+                selectedFiles.forEach(file => {
+                    formData.append('videos', file);
+                });
+                
+                const response = await fetch('/api/queue/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage(inputMessage, `✅ Added ${selectedFiles.length} video(s) to queue`, 'success');
+                    selectedFiles = [];
+                    fileInput.value = '';
+                    updateSelectedFilesDisplay();
+                    addToQueueBtn.disabled = true;
+                    updateQueue();
+                } else {
+                    showMessage(inputMessage, `❌ Error: ${data.error}`, 'error');
+                    addToQueueBtn.disabled = false;
+                }
+            } catch (error) {
+                showMessage(inputMessage, `❌ Error: ${error.message}`, 'error');
+                addToQueueBtn.disabled = false;
+            } finally {
+                addToQueueBtn.textContent = '➕ Add to Queue';
+            }
+        });
+        
+        clearSelectionBtn.addEventListener('click', () => {
+            selectedFiles = [];
+            fileInput.value = '';
+            updateSelectedFilesDisplay();
+            addToQueueBtn.disabled = true;
+            inputMessage.innerHTML = '';
+        });
+        
+        // Update queue display
+        async function updateQueue() {
+            try {
+                const response = await fetch('/api/queue/status');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    queue = data.queue || [];
+                    analysisResults = data.results || {};
+                    renderQueue();
+                    renderResults();
+                    checkGrokReady();
+                }
+            } catch (error) {
+                console.error('Error updating queue:', error);
+            }
+        }
+        
+        // Render queue
+        function renderQueue() {
+            queueCount.textContent = queue.length;
+            
+            if (queue.length === 0) {
+                queueContainer.innerHTML = '<div class="empty-queue">No videos in queue. Add videos above to get started.</div>';
+                return;
+            }
+            
+            queueContainer.innerHTML = queue.map(item => {
+                const statusClass = item.status === 'complete' ? 'complete' : 
+                                  item.status === 'processing' ? 'processing' : 
+                                  item.status === 'error' ? 'error' : '';
+                
+                const statusBadge = item.status === 'complete' ? '<span class="status-badge status-complete">✅ Complete</span>' :
+                                  item.status === 'processing' ? '<span class="status-badge status-processing">⏳ Processing</span>' :
+                                  item.status === 'error' ? '<span class="status-badge status-error">❌ Error</span>' :
+                                  '<span class="status-badge status-queued">⏸️ Queued</span>';
+                
+                let progressHTML = '';
+                if (item.status === 'processing' && item.progress !== undefined) {
+                    progressHTML = `
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${item.progress}%"></div>
+                        </div>
+                        <div class="queue-details">${item.current_step || 'Processing...'} - ${item.progress}%</div>
+                    `;
+                }
+                
+                let actionsHTML = '';
+                if (item.status === 'complete') {
+                    actionsHTML = '<button class="secondary" onclick="viewAnalysis(\'' + item.id + '\')">👁️ View</button>';
+                }
+                actionsHTML += '<button class="secondary" onclick="removeFromQueue(\'' + item.id + '\')">❌ Remove</button>';
+                
+                const thumbnailHTML = item.thumbnail_path ? 
+                    `<img src="${item.thumbnail_path}" alt="Video thumbnail" style="
+                        width: 120px;
+                        height: 68px;
+                        object-fit: cover;
+                        border-radius: 4px;
+                        margin-right: 12px;
+                        background: #f0f0f0;
+                    " />` : 
+                    `<div style="
+                        width: 120px;
+                        height: 68px;
+                        background: #e0e0e0;
+                        border-radius: 4px;
+                        margin-right: 12px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: #999;
+                        font-size: 24px;
+                    ">📹</div>`;
+                
+                return `
+                    <div class="queue-item ${statusClass}">
+                        <div style="display: flex; align-items: flex-start;">
+                            ${thumbnailHTML}
+                            <div style="flex: 1;">
+                                <div class="queue-header">
+                                    <div class="queue-title">
+                                        ${item.filename || item.path}
+                                        ${statusBadge}
+                                    </div>
+                                    <div style="font-size: 12px; color: #666;">${item.duration ? item.duration.toFixed(1) + 's' : ''}</div>
+                                </div>
+                                ${progressHTML}
+                                ${item.error ? '<div class="queue-details" style="color: #ea4335;">' + item.error + '</div>' : ''}
+                                <div class="queue-actions">${actionsHTML}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Render analysis results
+        function renderResults() {
+            const completed = queue.filter(item => item.status === 'complete');
+            
+            if (completed.length === 0) {
+                resultsSection.style.display = 'none';
+                return;
+            }
+            
+            resultsSection.style.display = 'block';
+            resultsContainer.innerHTML = completed.map(item => {
+                const result = analysisResults[item.id];
+                if (!result) return '';
+                
+                const segments = result.segments || [];
+                const transcriptPreview = segments.slice(0, 3).map(seg => {
+                    const start = formatTime(seg.time_range.start);
+                    const end = formatTime(seg.time_range.end);
+                    return `<div class="transcript-segment">[${start}-${end}] ${seg.transcript.full_text.substring(0, 50)}...</div>`;
+                }).join('');
+                
+                return `
+                    <div class="analysis-card">
+                        <div class="analysis-header">
+                            <div>
+                                <strong>📹 ${item.filename || item.path}</strong>
+                            </div>
+                            <div style="font-size: 12px; color: #666;">
+                                ${segments.length} segments | ${item.duration}s
+                            </div>
+                        </div>
+                        <div class="analysis-summary">
+                            Quality Score: ${result.summary?.average_quality || 'N/A'} | 
+                            Objects: ${result.summary?.object_types?.join(', ') || 'None'}
+                        </div>
+                        <div class="transcript-preview">
+                            ${transcriptPreview}
+                            ${segments.length > 3 ? '<div style="color: #999; margin-top: 8px;">... (' + (segments.length - 3) + ' more segments)</div>' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Check if ready for Grok
+        function checkGrokReady() {
+            const allComplete = queue.length > 0 && queue.every(item => item.status === 'complete');
+            grokSection.style.display = allComplete ? 'block' : 'none';
+        }
+        
+        // Utility functions
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function showMessage(container, message, type) {
+            container.innerHTML = `<div class="message ${type}">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+        
+        // Global functions for queue actions
+        window.viewAnalysis = function(id) {
+            // TODO: Show detailed analysis view
+            console.log('View analysis:', id);
+        };
+        
+        window.removeFromQueue = async function(id) {
+            try {
+                const response = await fetch(`/api/queue/remove/${id}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    updateQueue();
+                }
+            } catch (error) {
+                console.error('Error removing from queue:', error);
+            }
+        };
+        
+        // Process with Grok
+        processWithGrokBtn.addEventListener('click', async () => {
+            processWithGrokBtn.disabled = true;
+            processWithGrokBtn.textContent = '🤖 Processing with Grok...';
+            
+            try {
+                const response = await fetch('/api/grok/process', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        target_duration_min: 15,
+                        target_duration_max: 60
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Store editing plan and redirect to review page
+                    sessionStorage.setItem('editing_plan', JSON.stringify(data.editing_plan));
+                    window.location.href = '/review';
+                } else {
+                    alert('❌ Error: ' + (data.error || 'Failed to process with Grok'));
+                    processWithGrokBtn.disabled = false;
+                    processWithGrokBtn.textContent = '🎬 Process with Grok';
+                }
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+                processWithGrokBtn.disabled = false;
+                processWithGrokBtn.textContent = '🎬 Process with Grok';
+            }
+        });
+        
+        // Poll for queue updates every 3 seconds
+        setInterval(updateQueue, 3000);
+        updateQueue();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Video Uploader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"],
+        input[type="file"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            font-family: inherit;
+        }
+        
+        input[type="text"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+        }
+        
+        input[type="file"] {
+            padding: 10px;
+            cursor: pointer;
+        }
+        
+        .privacy-options {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .privacy-option {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .privacy-option input[type="radio"] {
+            margin-right: 6px;
+        }
+        
+        .tags-hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+        
+        .upload-button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .upload-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .upload-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .progress-container {
+            margin-top: 24px;
+            display: none;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .message {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .message a {
+            color: #155724;
+            font-weight: 600;
+            text-decoration: underline;
+        }
+        
+        .message.error a {
+            color: #721c24;
+        }
+        
+        .account-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #f0f0f0;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 8px;
+            color: #666;
+        }
+        
+        .required {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📹 YouTube Video Uploader</h1>
+        <p class="subtitle">Upload videos to your YouTube accounts</p>
+        
+        <div class="nav-links" style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #e0e0e0;">
+            <a href="/" class="active" style="color: #667eea; text-decoration: none; margin-right: 20px; font-weight: 500;">Create YouTube Short</a>
+            <a href="/accounts" style="color: #667eea; text-decoration: none; font-weight: 500;">Manage Accounts</a>
+        </div>
+        
+        <!-- Video Queue Section -->
+        <div id="queueSection" style="margin-bottom: 40px; padding: 24px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
+            <h2 style="font-size: 20px; margin-bottom: 16px; color: #333;">Step 1: Add Videos to Queue</h2>
+            
+            <!-- File Upload Area -->
+            <div id="uploadArea" style="
+                border: 2px dashed #ddd;
+                border-radius: 8px;
+                padding: 40px;
+                text-align: center;
+                background: #fafafa;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-bottom: 16px;
+            " onmouseover="this.style.borderColor='#4285f4'; this.style.background='#f0f7ff';" 
+               onmouseout="this.style.borderColor='#ddd'; this.style.background='#fafafa';">
+                <input type="file" id="fileInput" multiple accept="video/*" style="display: none;" />
+                <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
+                <div style="font-size: 16px; font-weight: 500; margin-bottom: 8px; color: #333;">
+                    Click to select videos or drag & drop here
+                </div>
+                <div style="font-size: 13px; color: #666;">
+                    Supported formats: MP4, MOV, AVI, MKV, WebM
+                </div>
+            </div>
+            
+            <!-- Selected Files List -->
+            <div id="selectedFiles" style="display: none; margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #555;">
+                    Selected Videos:
+                </label>
+                <div id="filesList" style="
+                    background: white;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 12px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                "></div>
+            </div>
+            
+            <div style="display: flex; gap: 12px;">
+                <button class="upload-button" id="addToQueue" disabled style="flex: 1; max-width: 200px;">➕ Add to Queue</button>
+                <button style="padding: 12px 20px; background: #f1f1f1; color: #333; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;" id="clearSelection">Clear Selection</button>
+            </div>
+            <div id="inputMessage" style="margin-top: 12px;"></div>
+        </div>
+        
+        <!-- Processing Queue -->
+        <div id="processingQueueSection" style="margin-bottom: 40px; padding: 24px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0; display: none;">
+            <h2 style="font-size: 20px; margin-bottom: 16px; color: #333;">Step 2: Processing Queue (<span id="queueCount">0</span> videos)</h2>
+            <div id="queueContainer">
+                <div style="text-align: center; padding: 40px; color: #999;">No videos in queue. Add videos above to get started.</div>
+            </div>
+        </div>
+        
+        <!-- Analysis Results -->
+        <div id="analysisSection" style="margin-bottom: 40px; padding: 24px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0; display: none;">
+            <h2 style="font-size: 20px; margin-bottom: 16px; color: #333;">Step 3: Analysis Results</h2>
+            <div id="resultsContainer"></div>
+        </div>
+        
+        <!-- Grok Processing -->
+        <div id="grokSection" style="margin-bottom: 40px; padding: 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white; display: none;">
+            <h2 style="font-size: 20px; margin-bottom: 12px; color: white;">Step 4: AI Processing</h2>
+            <p style="margin-bottom: 16px; opacity: 0.9;">All videos have been analyzed. Click below to generate YouTube Short with Grok.</p>
+            <button class="upload-button" id="processWithGrok" style="background: white; color: #667eea; max-width: 300px;">🎬 Process with Grok</button>
+        </div>
+        
+        <!-- Final Upload Section (Original Form) -->
+        <div id="uploadSection" style="margin-bottom: 40px; padding: 24px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0; display: none;">
+            <h2 style="font-size: 20px; margin-bottom: 16px; color: #333;">Step 5: Review & Upload to YouTube</h2>
+        
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="account">
+                    YouTube Account <span class="required">*</span>
+                </label>
+                <select id="account" name="account" required>
+                    <option value="">Select an account...</option>
+                    {% for account in accounts %}
+                    <option value="{{ account }}">{{ account }}</option>
+                    {% endfor %}
+                </select>
+                {% if accounts|length == 0 %}
+                <p style="color: #e74c3c; font-size: 12px; margin-top: 8px;">
+                    No accounts configured. Please add credentials in the credentials/ directory.
+                </p>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="video">
+                    Video File <span class="required">*</span>
+                </label>
+                <input type="file" id="video" name="video" accept="video/*" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="title">
+                    Video Title <span class="required">*</span>
+                </label>
+                <input type="text" id="title" name="title" required 
+                       placeholder="Enter video title">
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Video Description</label>
+                <textarea id="description" name="description" 
+                          placeholder="Enter video description"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Privacy Setting</label>
+                <div class="privacy-options">
+                    <div class="privacy-option">
+                        <input type="radio" id="privacy-public" name="privacy" value="public" checked>
+                        <label for="privacy-public" style="display: inline; font-weight: normal;">Public</label>
+                    </div>
+                    <div class="privacy-option">
+                        <input type="radio" id="privacy-unlisted" name="privacy" value="unlisted">
+                        <label for="privacy-unlisted" style="display: inline; font-weight: normal;">Unlisted</label>
+                    </div>
+                    <div class="privacy-option">
+                        <input type="radio" id="privacy-private" name="privacy" value="private">
+                        <label for="privacy-private" style="display: inline; font-weight: normal;">Private</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="tags">Tags (comma-separated)</label>
+                <input type="text" id="tags" name="tags" 
+                       placeholder="tag1, tag2, tag3">
+                <div class="tags-hint">Separate multiple tags with commas</div>
+            </div>
+            
+            <button type="submit" class="upload-button" id="uploadButton">
+                Upload to YouTube
+            </button>
+        </form>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">Uploading...</div>
+        </div>
+        
+        <div class="message" id="message"></div>
+    </div>
+    
+    <script>
+        const form = document.getElementById('uploadForm');
+        const uploadButton = document.getElementById('uploadButton');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const messageDiv = document.getElementById('message');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Reset UI
+            messageDiv.style.display = 'none';
+            messageDiv.className = 'message';
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            progressText.textContent = 'Uploading...';
+            uploadButton.disabled = true;
+            uploadButton.textContent = 'Uploading...';
+            
+            const formData = new FormData(form);
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    progressFill.style.width = '100%';
+                    progressText.textContent = 'Upload complete!';
+                    
+                    messageDiv.className = 'message success';
+                    messageDiv.innerHTML = `
+                        ✅ Video uploaded successfully!<br>
+                        <a href="${data.video_url}" target="_blank">View on YouTube</a>
+                    `;
+                    messageDiv.style.display = 'block';
+                    
+                    // Reset form
+                    form.reset();
+                } else {
+                    progressContainer.style.display = 'none';
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = `❌ Error: ${data.error || 'Upload failed'}`;
+                    messageDiv.style.display = 'block';
+                }
+            } catch (error) {
+                progressContainer.style.display = 'none';
+                messageDiv.className = 'message error';
+                messageDiv.textContent = `❌ Error: ${error.message}`;
+                messageDiv.style.display = 'block';
+            } finally {
+                uploadButton.disabled = false;
+                uploadButton.textContent = 'Upload to YouTube';
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                }, 3000);
+            }
+        });
+    </script>
+</body>
+</html>
+

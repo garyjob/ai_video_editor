@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Management - YouTube Video Uploader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .nav-links {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        .nav-links a:hover {
+            color: #764ba2;
+        }
+        
+        .nav-links a.active {
+            color: #764ba2;
+            border-bottom: 2px solid #764ba2;
+            padding-bottom: 5px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section-title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"],
+        input[type="email"],
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            font-family: inherit;
+        }
+        
+        input[type="text"]:focus,
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        input[type="file"] {
+            padding: 10px;
+            cursor: pointer;
+        }
+        
+        .file-hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+        
+        .button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .button-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .button-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .button-danger {
+            background: #e74c3c;
+            color: white;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .button-danger:hover:not(:disabled) {
+            background: #c0392b;
+        }
+        
+        .button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .required {
+            color: #e74c3c;
+        }
+        
+        .message {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .accounts-list {
+            list-style: none;
+        }
+        
+        .account-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            margin-bottom: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .account-email {
+            font-weight: 500;
+            color: #333;
+            font-size: 16px;
+        }
+        
+        .account-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .account-badge {
+            padding: 4px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Account Management</h1>
+        <p class="subtitle">Manage your YouTube account credentials</p>
+        
+        <div class="nav-links">
+            <a href="/accounts" class="active">Accounts</a>
+            <a href="/">Upload Video</a>
+        </div>
+        
+        <!-- Add Account Section -->
+        <div class="section">
+            <h2 class="section-title">Add New Account</h2>
+            
+            <!-- Quick Authenticate Option -->
+            {% if has_oauth_client %}
+            <div style="margin-bottom: 30px; padding: 20px; background: #f0f7ff; border-radius: 8px; border: 2px solid #667eea;">
+                <h3 style="margin-bottom: 12px; color: #333; font-size: 18px;">🔐 Desktop Authentication</h3>
+                <p style="margin-bottom: 16px; color: #666; font-size: 14px;">
+                    Authenticate with YouTube directly - opens browser for authentication!
+                </p>
+                <form id="authenticateForm" style="display: flex; gap: 12px; align-items: flex-end;">
+                    <div style="flex: 1;">
+                        <label for="auth_email" style="display: block; margin-bottom: 8px; color: #333; font-weight: 500; font-size: 14px;">
+                            YouTube Account Email <span style="color: #999; font-size: 12px;">(optional - will be detected automatically)</span>
+                        </label>
+                        <input type="email" id="auth_email" name="account_email" 
+                               placeholder="example@gmail.com (optional)"
+                               style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+                        <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                            💡 Leave empty to auto-detect from your Google account
+                        </div>
+                    </div>
+                    <button type="submit" class="button button-primary" id="authenticateButton">
+                        Authenticate with YouTube
+                    </button>
+                </form>
+                <div class="message" id="authMessage" style="margin-top: 16px;"></div>
+                </div>
+            </div>
+            
+            <div style="text-align: center; margin: 20px 0; color: #999; font-size: 14px;">
+                <span style="background: white; padding: 0 10px;">OR</span>
+            </div>
+            {% endif %}
+            
+            <!-- Manual Upload Option -->
+            <div style="{% if has_oauth_client %}opacity: 0.7;{% endif %}">
+                <h3 style="margin-bottom: 16px; color: #666; font-size: 16px;">📁 Manual Upload (Advanced)</h3>
+                <form id="addAccountForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="account_email">
+                            YouTube Account Email <span class="required">*</span>
+                        </label>
+                        <input type="email" id="account_email" name="account_email" 
+                               placeholder="example@gmail.com" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="credentials_file">
+                            OAuth2 Credentials JSON File <span class="required">*</span>
+                        </label>
+                        <input type="file" id="credentials_file" name="credentials_file" 
+                               accept=".json" required>
+                        <div class="file-hint">
+                            Upload the OAuth2 credentials JSON file downloaded from Google Cloud Console
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="button button-primary" id="addButton">
+                        Upload Credentials
+                    </button>
+                </form>
+            </div>
+            
+            <div class="message" id="addMessage"></div>
+            
+            {% if not has_oauth_client %}
+            <div style="margin-top: 20px; padding: 16px; background: #fff3cd; border-radius: 8px; border: 1px solid #ffc107;">
+                <strong>ℹ️ Note:</strong> To use quick authentication, please upload at least one OAuth2 credentials file first. 
+                This will be used as the OAuth client for authenticating other accounts.
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Existing Accounts Section -->
+        <div class="section">
+            <h2 class="section-title">Existing Accounts</h2>
+            <ul class="accounts-list" id="accountsList">
+                {% if accounts %}
+                    {% for account in accounts %}
+                    <li class="account-item" data-account="{{ account }}">
+                        <div class="account-email">{{ account }}</div>
+                        <div class="account-info">
+                            <span class="account-badge">Configured</span>
+                            <button class="button button-danger" onclick="deleteAccount('{{ account }}')">
+                                Delete
+                            </button>
+                        </div>
+                    </li>
+                    {% endfor %}
+                {% else %}
+                    <li class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <div>No accounts configured yet</div>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        const addForm = document.getElementById('addAccountForm');
+        const addMessage = document.getElementById('addMessage');
+        const addButton = document.getElementById('addButton');
+        const accountsList = document.getElementById('accountsList');
+        {% if has_oauth_client %}
+        // Web Authentication Form Handler (Redirect-based OAuth)
+        const authenticateForm = document.getElementById('authenticateForm');
+        const authMessage = document.getElementById('authMessage');
+        const authenticateButton = document.getElementById('authenticateButton');
+        
+        authenticateForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const accountEmail = document.getElementById('auth_email').value.trim();
+            
+            // Email is optional - will be extracted from OAuth response
+            // No validation needed
+            
+            // Reset UI
+            authMessage.style.display = 'none';
+            authMessage.className = 'message';
+            authenticateButton.disabled = true;
+            authenticateButton.textContent = 'Starting authentication...';
+            
+            try {
+                const response = await fetch('/api/accounts/authenticate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ account_email: accountEmail })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success && data.authorization_url) {
+                    // Redirect to Google OAuth
+                    window.location.href = data.authorization_url;
+                } else {
+                    authMessage.className = 'message error';
+                    authMessage.textContent = `❌ Error: ${data.error || 'Failed to start authentication'}`;
+                    authMessage.style.display = 'block';
+                    authenticateButton.disabled = false;
+                    authenticateButton.textContent = 'Authenticate with YouTube';
+                }
+            } catch (error) {
+                authMessage.className = 'message error';
+                authMessage.textContent = `❌ Error: ${error.message}`;
+                authMessage.style.display = 'block';
+                authenticateButton.disabled = false;
+                authenticateButton.textContent = 'Authenticate with YouTube';
+            }
+        });
+        {% endif %}
+        
+        // Manual Upload Form Handler
+        addForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(addForm);
+            
+            // Reset UI
+            addMessage.style.display = 'none';
+            addMessage.className = 'message';
+            addButton.disabled = true;
+            addButton.textContent = 'Adding...';
+            
+            try {
+                const response = await fetch('/api/accounts/add', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    addMessage.className = 'message success';
+                    addMessage.textContent = `✅ ${data.message}`;
+                    addMessage.style.display = 'block';
+                    
+                    // Reset form
+                    addForm.reset();
+                    
+                    // Reload page after a short delay to show new account
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    addMessage.className = 'message error';
+                    addMessage.textContent = `❌ Error: ${data.error || 'Failed to add account'}`;
+                    addMessage.style.display = 'block';
+                }
+            } catch (error) {
+                addMessage.className = 'message error';
+                addMessage.textContent = `❌ Error: ${error.message}`;
+                addMessage.style.display = 'block';
+            } finally {
+                addButton.disabled = false;
+                addButton.textContent = 'Upload Credentials';
+            }
+        });
+        
+        async function deleteAccount(accountEmail) {
+            if (!confirm(`Are you sure you want to delete account "${accountEmail}"?\n\nThis will remove the credentials and you'll need to re-add them to use this account again.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/accounts/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ account_email: accountEmail })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Remove from UI
+                    const item = document.querySelector(`[data-account="${accountEmail}"]`);
+                    if (item) {
+                        item.style.transition = 'opacity 0.3s';
+                        item.style.opacity = '0';
+                        setTimeout(() => {
+                            item.remove();
+                            
+                            // Check if list is empty
+                            if (accountsList.children.length === 0) {
+                                accountsList.innerHTML = `
+                                    <li class="empty-state">
+                                        <div class="empty-state-icon">📭</div>
+                                        <div>No accounts configured yet</div>
+                                    </li>
+                                `;
+                            }
+                        }, 300);
+                    }
+                } else {
+                    alert(`Error: ${data.error || 'Failed to delete account'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
+

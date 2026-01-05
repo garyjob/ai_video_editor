@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Editor - Create YouTube Shorts</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .nav-links {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: 500;
+        }
+        
+        .workflow-section {
+            margin-bottom: 40px;
+            padding: 24px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .workflow-section h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            color: #333;
+        }
+        
+        /* File Upload Styles */
+        #uploadArea {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 16px;
+        }
+        
+        #uploadArea:hover {
+            border-color: #4285f4;
+            background: #f0f7ff;
+        }
+        
+        /* Queue Item Styles */
+        .queue-item {
+            padding: 16px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            background: white;
+        }
+        
+        .queue-item.complete {
+            border-color: #34a853;
+            background: #f0f8f4;
+        }
+        
+        .queue-item.processing {
+            border-color: #fbbc04;
+            background: #fffbf0;
+        }
+        
+        .queue-item.error {
+            border-color: #ea4335;
+            background: #fef0ef;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+        
+        .status-complete {
+            background: #34a853;
+            color: white;
+        }
+        
+        .status-processing {
+            background: #fbbc04;
+            color: #333;
+        }
+        
+        .status-error {
+            background: #ea4335;
+            color: white;
+        }
+        
+        .status-queued {
+            background: #e8e8e8;
+            color: #666;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #4285f4;
+            transition: width 0.3s;
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+        
+        .message.error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+        
+        .message.success {
+            background: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .upload-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .upload-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .upload-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Video Editor - Create YouTube Shorts</h1>
+        <p class="subtitle">Create vertical videos (9:16) from 15-60 seconds with AI assistance</p>
+        
+        <div class="nav-links">
+            <a href="/">Create YouTube Short</a>
+            <a href="/accounts">Manage Accounts</a>
+        </div>
+        
+        <!-- Step 1: Add Videos to Queue -->
+        <div class="workflow-section" id="queueSection">
+            <h2>Step 1: Add Videos to Queue</h2>
+            
+            <div id="uploadArea">
+                <input type="file" id="fileInput" multiple accept="video/*" style="display: none;" />
+                <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
+                <div style="font-size: 16px; font-weight: 500; margin-bottom: 8px; color: #333;">
+                    Click to select videos or drag & drop here
+                </div>
+                <div style="font-size: 13px; color: #666;">
+                    Supported formats: MP4, MOV, AVI, MKV, WebM
+                </div>
+            </div>
+            
+            <div id="selectedFiles" style="display: none; margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #555;">
+                    Selected Videos:
+                </label>
+                <div id="filesList" style="
+                    background: white;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 12px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                "></div>
+            </div>
+            
+            <div style="display: flex; gap: 12px;">
+                <button class="upload-button" id="addToQueue" disabled>➕ Add to Queue</button>
+                <button style="padding: 12px 20px; background: #f1f1f1; color: #333; border: none; border-radius: 8px; cursor: pointer;" id="clearSelection">Clear Selection</button>
+            </div>
+            <div id="inputMessage"></div>
+        </div>
+        
+        <!-- Step 2: Processing Queue -->
+        <div class="workflow-section" id="processingQueueSection" style="display: none;">
+            <h2>Step 2: Processing Queue (<span id="queueCount">0</span> videos)</h2>
+            <div id="queueContainer">
+                <div style="text-align: center; padding: 40px; color: #999;">No videos in queue.</div>
+            </div>
+        </div>
+        
+        <!-- Step 3: Analysis Results -->
+        <div class="workflow-section" id="analysisSection" style="display: none;">
+            <h2>Step 3: Analysis Results</h2>
+            <div id="resultsContainer"></div>
+        </div>
+        
+        <!-- Step 4: Grok Processing -->
+        <div class="workflow-section" id="grokSection" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <h2 style="color: white;">Step 4: AI Processing</h2>
+            <p style="margin-bottom: 16px; opacity: 0.9;">All videos have been analyzed. Click below to generate YouTube Short with Grok.</p>
+            <button class="upload-button" id="processWithGrok" style="background: white; color: #667eea; max-width: 300px;">🎬 Process with Grok</button>
+        </div>
+        
+        <!-- Step 5: Review & Upload -->
+        <div class="workflow-section" id="uploadSection" style="display: none;">
+            <h2>Step 5: Review & Upload to YouTube</h2>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="account">
+                        YouTube Account <span style="color: #e74c3c;">*</span>
+                    </label>
+                    <select id="account" name="account" required>
+                        <option value="">Select an account...</option>
+                        {% for account in accounts %}
+                        <option value="{{ account }}">{{ account }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="title">
+                        Video Title <span style="color: #e74c3c;">*</span>
+                    </label>
+                    <input type="text" id="title" name="title" required placeholder="Enter video title">
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Video Description</label>
+                    <textarea id="description" name="description" placeholder="Enter video description"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Privacy Setting</label>
+                    <div style="display: flex; gap: 12px;">
+                        <label style="display: inline; font-weight: normal;"><input type="radio" name="privacy" value="public" checked> Public</label>
+                        <label style="display: inline; font-weight: normal;"><input type="radio" name="privacy" value="unlisted"> Unlisted</label>
+                        <label style="display: inline; font-weight: normal;"><input type="radio" name="privacy" value="private"> Private</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="tags">Tags (comma-separated)</label>
+                    <input type="text" id="tags" name="tags" placeholder="tag1, tag2, tag3">
+                </div>
+                
+                <button type="submit" class="upload-button" id="uploadButton">Upload to YouTube</button>
+            </form>
+            
+            <div id="uploadProgress" style="display: none; margin-top: 20px;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                </div>
+                <div style="text-align: center; color: #666; margin-top: 8px;" id="progressText">Uploading...</div>
+            </div>
+            
+            <div id="uploadMessage" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Queue management (from process.html)
+        let queue = [];
+        let analysisResults = {};
+        let selectedFiles = [];
+        let editingPlan = null;
+        
+        // DOM elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const selectedFilesDiv = document.getElementById('selectedFiles');
+        const filesListDiv = document.getElementById('filesList');
+        const addToQueueBtn = document.getElementById('addToQueue');
+        const clearSelectionBtn = document.getElementById('clearSelection');
+        const queueContainer = document.getElementById('queueContainer');
+        const queueCount = document.getElementById('queueCount');
+        const inputMessage = document.getElementById('inputMessage');
+        const processingQueueSection = document.getElementById('processingQueueSection');
+        const analysisSection = document.getElementById('analysisSection');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const grokSection = document.getElementById('grokSection');
+        const processWithGrokBtn = document.getElementById('processWithGrok');
+        const uploadSection = document.getElementById('uploadSection');
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadButton = document.getElementById('uploadButton');
+        
+        // File selection handlers
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#4285f4';
+            uploadArea.style.background = '#f0f7ff';
+        });
+        
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#ddd';
+            uploadArea.style.background = '#fafafa';
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#ddd';
+            uploadArea.style.background = '#fafafa';
+            
+            const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('video/'));
+            handleFiles(files);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            handleFiles(files);
+        });
+        
+        function handleFiles(files) {
+            selectedFiles = files;
+            updateSelectedFilesDisplay();
+            addToQueueBtn.disabled = files.length === 0;
+        }
+        
+        function updateSelectedFilesDisplay() {
+            if (selectedFiles.length === 0) {
+                selectedFilesDiv.style.display = 'none';
+                return;
+            }
+            
+            selectedFilesDiv.style.display = 'block';
+            filesListDiv.innerHTML = selectedFiles.map((file) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; margin-bottom: 4px; background: white; border-radius: 4px;">
+                    <span style="font-size: 13px; color: #333;">${file.name}</span>
+                    <span style="font-size: 12px; color: #666;">${formatFileSize(file.size)}</span>
+                </div>
+            `).join('');
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        // Add videos to queue
+        addToQueueBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) {
+                showMessage(inputMessage, 'Please select at least one video file', 'error');
+                return;
+            }
+            
+            addToQueueBtn.disabled = true;
+            addToQueueBtn.textContent = 'Uploading...';
+            
+            try {
+                const formData = new FormData();
+                selectedFiles.forEach(file => {
+                    formData.append('videos', file);
+                });
+                
+                const response = await fetch('/api/queue/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage(inputMessage, `✅ Added ${selectedFiles.length} video(s) to queue`, 'success');
+                    selectedFiles = [];
+                    fileInput.value = '';
+                    updateSelectedFilesDisplay();
+                    addToQueueBtn.disabled = true;
+                    processingQueueSection.style.display = 'block';
+                    updateQueue();
+                } else {
+                    showMessage(inputMessage, `❌ Error: ${data.error}`, 'error');
+                    addToQueueBtn.disabled = false;
+                }
+            } catch (error) {
+                showMessage(inputMessage, `❌ Error: ${error.message}`, 'error');
+                addToQueueBtn.disabled = false;
+            } finally {
+                addToQueueBtn.textContent = '➕ Add to Queue';
+            }
+        });
+        
+        clearSelectionBtn.addEventListener('click', () => {
+            selectedFiles = [];
+            fileInput.value = '';
+            updateSelectedFilesDisplay();
+            addToQueueBtn.disabled = true;
+            inputMessage.innerHTML = '';
+        });
+        
+        // Update queue display
+        async function updateQueue() {
+            try {
+                const response = await fetch('/api/queue/status');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    queue = data.queue || [];
+                    analysisResults = data.results || {};
+                    renderQueue();
+                    renderResults();
+                    checkGrokReady();
+                }
+            } catch (error) {
+                console.error('Error updating queue:', error);
+            }
+        }
+        
+        // Render queue
+        function renderQueue() {
+            queueCount.textContent = queue.length;
+            
+            if (queue.length === 0) {
+                queueContainer.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No videos in queue.</div>';
+                processingQueueSection.style.display = 'none';
+                return;
+            }
+            
+            processingQueueSection.style.display = 'block';
+            
+            queueContainer.innerHTML = queue.map(item => {
+                const statusClass = item.status === 'complete' ? 'complete' : 
+                                  item.status === 'processing' ? 'processing' : 
+                                  item.status === 'error' ? 'error' : '';
+                
+                const statusBadge = item.status === 'complete' ? '<span class="status-badge status-complete">✅ Complete</span>' :
+                                  item.status === 'processing' ? '<span class="status-badge status-processing">⏳ Processing</span>' :
+                                  item.status === 'error' ? '<span class="status-badge status-error">❌ Error</span>' :
+                                  '<span class="status-badge status-queued">⏸️ Queued</span>';
+                
+                let progressHTML = '';
+                if (item.status === 'processing' && item.progress !== undefined) {
+                    progressHTML = `
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${item.progress}%"></div>
+                        </div>
+                        <div style="font-size: 13px; color: #666; margin-top: 4px;">${item.current_step || 'Processing...'} - ${item.progress}%</div>
+                    `;
+                }
+                
+                const thumbnailHTML = item.thumbnail_path ? 
+                    `<img src="${item.thumbnail_path}" alt="Video thumbnail" style="width: 120px; height: 68px; object-fit: cover; border-radius: 4px; margin-right: 12px; background: #f0f0f0; flex-shrink: 0;" />` : 
+                    `<div style="width: 120px; height: 68px; background: #e0e0e0; border-radius: 4px; margin-right: 12px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24px; flex-shrink: 0;">📹</div>`;
+                
+                return `
+                    <div class="queue-item ${statusClass}">
+                        <div style="display: flex; align-items: flex-start;">
+                            ${thumbnailHTML}
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <div style="font-weight: 500;">${item.filename || item.path} ${statusBadge}</div>
+                                    <div style="font-size: 12px; color: #666;">${item.duration ? item.duration.toFixed(1) + 's' : ''}</div>
+                                </div>
+                                ${progressHTML}
+                                ${item.error ? '<div style="font-size: 13px; color: #ea4335; margin-top: 4px;">' + item.error + '</div>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Render results
+        function renderResults() {
+            const completed = queue.filter(item => item.status === 'complete');
+            
+            if (completed.length === 0) {
+                analysisSection.style.display = 'none';
+                return;
+            }
+            
+            analysisSection.style.display = 'block';
+            resultsContainer.innerHTML = completed.map(item => {
+                const result = analysisResults[item.id];
+                if (!result) return '';
+                
+                const segments = result.segments || [];
+                return `
+                    <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: white;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <strong>📹 ${item.filename || item.path}</strong>
+                            <div style="font-size: 12px; color: #666;">${segments.length} segments | ${item.duration ? item.duration.toFixed(1) + 's' : ''}</div>
+                        </div>
+                        <div style="font-size: 13px; color: #666;">
+                            Quality Score: ${result.summary?.average_quality?.toFixed(2) || 'N/A'} | 
+                            Objects: ${result.summary?.object_types?.join(', ') || 'None'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Check if ready for Grok
+        function checkGrokReady() {
+            const allComplete = queue.length > 0 && queue.every(item => item.status === 'complete');
+            grokSection.style.display = allComplete ? 'block' : 'none';
+        }
+        
+        // Process with Grok
+        processWithGrokBtn.addEventListener('click', async () => {
+            processWithGrokBtn.disabled = true;
+            processWithGrokBtn.textContent = '🤖 Processing with Grok...';
+            
+            try {
+                const response = await fetch('/api/grok/process', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        target_duration_min: 15,
+                        target_duration_max: 60
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    editingPlan = data.editing_plan;
+                    // Populate upload form with Grok's suggestions
+                    if (editingPlan.metadata) {
+                        document.getElementById('title').value = editingPlan.metadata.title || '';
+                        document.getElementById('description').value = editingPlan.metadata.description || '';
+                        document.getElementById('tags').value = editingPlan.metadata.tags?.join(', ') || '';
+                    }
+                    uploadSection.style.display = 'block';
+                    showMessage(inputMessage, '✅ Grok processing complete! Review and upload below.', 'success');
+                } else {
+                    showMessage(inputMessage, `❌ Error: ${data.error || 'Failed to process with Grok'}`, 'error');
+                    processWithGrokBtn.disabled = false;
+                }
+            } catch (error) {
+                showMessage(inputMessage, `❌ Error: ${error.message}`, 'error');
+                processWithGrokBtn.disabled = false;
+            } finally {
+                processWithGrokBtn.textContent = '🎬 Process with Grok';
+            }
+        });
+        
+        // Upload form handler
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            uploadButton.disabled = true;
+            uploadButton.textContent = 'Uploading...';
+            document.getElementById('uploadProgress').style.display = 'block';
+            document.getElementById('progressFill').style.width = '0%';
+            
+            const formData = new FormData(uploadForm);
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('progressFill').style.width = '100%';
+                    document.getElementById('progressText').textContent = 'Upload complete!';
+                    
+                    const messageDiv = document.getElementById('uploadMessage');
+                    messageDiv.className = 'message success';
+                    messageDiv.innerHTML = `✅ Video uploaded successfully!<br><a href="${data.video_url}" target="_blank" style="color: #155724; font-weight: 600;">View on YouTube</a>`;
+                    messageDiv.style.display = 'block';
+                    
+                    uploadForm.reset();
+                } else {
+                    const messageDiv = document.getElementById('uploadMessage');
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = `❌ Error: ${data.error || 'Upload failed'}`;
+                    messageDiv.style.display = 'block';
+                }
+            } catch (error) {
+                const messageDiv = document.getElementById('uploadMessage');
+                messageDiv.className = 'message error';
+                messageDiv.textContent = `❌ Error: ${error.message}`;
+                messageDiv.style.display = 'block';
+            } finally {
+                uploadButton.disabled = false;
+                uploadButton.textContent = 'Upload to YouTube';
+            }
+        });
+        
+        function showMessage(container, message, type) {
+            container.innerHTML = `<div class="message ${type}">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+        
+        // Poll for queue updates every 3 seconds
+        setInterval(updateQueue, 3000);
+        updateQueue();
+    </script>
+</body>
+</html>
+
