@@ -11,6 +11,17 @@ from pathlib import Path
 from typing import Dict, List, Optional, Callable, Any
 import subprocess
 
+try:
+    from logger_config import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger('video_analyzer')
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
 
 def analyze_video(
     video_path: str,
@@ -42,6 +53,18 @@ def analyze_video(
         progress_callback("Transcribing audio with Whisper...", 20)
     
     transcript_data = transcribe_with_whisper(video_path, progress_callback)
+    transcript_segments = transcript_data.get('segments', [])
+    transcript_text = transcript_data.get('text', '')
+    logger.info(f"Whisper transcription complete: {len(transcript_segments)} segments, text length: {len(transcript_text)}")
+    
+    if len(transcript_segments) == 0 and len(transcript_text) == 0:
+        logger.warning("Whisper returned no transcription - video may have no audio or speech. Will create time-based segments.")
+        # Still create a valid transcript_data structure
+        transcript_data = {
+            "segments": [],
+            "text": "",
+            "language": "en"
+        }
     
     # Detect objects with YOLO
     if progress_callback:
@@ -246,6 +269,64 @@ def create_segments(
     transcript_segments = transcript_data.get("segments", [])
     duration = metadata.get("duration", 0)
     
+    logger.debug(f"create_segments: transcript_segments={len(transcript_segments)}, duration={duration:.2f}s")
+    
+    # If no transcript segments, create segments based on video duration
+    if not transcript_segments:
+        logger.warning(f"No transcript segments available - creating time-based segments for {duration:.2f}s video")
+        # Create segments every 5 seconds
+        segments = []
+        segment_idx = 0
+        for start in range(0, int(duration), 5):
+            end = min(start + 5, duration)
+            if end - start >= 1.0:  # Only create segments >= 1 second
+                segment = {
+                    "id": f"seg_{segment_idx:03d}",
+                    "time_range": {
+                        "start": float(start),
+                        "end": float(end)
+                    },
+                    "duration": end - start,
+                    "transcript": {
+                        "full_text": "",
+                        "words": [],
+                        "language": transcript_data.get("language", "en")
+                    },
+                    "objects": [],
+                    "priority": "medium",
+                    "quality_score": 0.5,
+                    "summary": f"Segment {start:.1f}s-{end:.1f}s (no audio detected)"
+                }
+                segments.append(segment)
+                segment_idx += 1
+        
+        # Add objects to segments if available
+        if objects_data:
+            objects_by_time = {}
+            for obj in objects_data:
+                time_key = int(obj.get("time", 0))
+                if time_key not in objects_by_time:
+                    objects_by_time[time_key] = []
+                objects_by_time[time_key].append(obj)
+            
+            for segment in segments:
+                start = segment["time_range"]["start"]
+                end = segment["time_range"]["end"]
+                segment_objects = []
+                for time_key, objs in objects_by_time.items():
+                    if start <= time_key <= end:
+                        for obj in objs:
+                            segment_objects.append({
+                                "name": obj.get("name", ""),
+                                "confidence": obj.get("confidence", 0.5),
+                                "time": obj.get("time", start),
+                                "bbox": obj.get("bbox", [])
+                            })
+                segment["objects"] = segment_objects
+        
+        logger.info(f"Created {len(segments)} time-based segments (no audio)")
+        return segments
+    
     # Group objects by time
     objects_by_time = {}
     for obj in objects_data:
@@ -254,8 +335,11 @@ def create_segments(
             objects_by_time[time_key] = []
         objects_by_time[time_key].append(obj)
     
+    logger.info(f"Creating segments from {len(transcript_segments)} transcript segments")
+    
     # Create segments from transcript segments
     segment_idx = 0
+    skipped_count = 0
     for transcript_seg in transcript_segments:
         start = transcript_seg.get("start", 0)
         end = transcript_seg.get("end", 0)
@@ -263,6 +347,8 @@ def create_segments(
         
         # Skip very short segments
         if end - start < 1.0:
+            skipped_count += 1
+            logger.debug(f"Skipping short segment: {start:.2f}-{end:.2f}s (duration: {end-start:.2f}s)")
             continue
         
         # Get words with timestamps
@@ -320,6 +406,11 @@ def create_segments(
         
         segments.append(segment)
         segment_idx += 1
+    
+    logger.info(f"Created {len(segments)} segments from transcript (skipped {skipped_count} short segments)")
+    if len(segments) == 0 and len(transcript_segments) > 0:
+        logger.warning(f"No segments created! All {len(transcript_segments)} transcript segments were filtered out")
+        logger.debug(f"Sample transcript segment: {json.dumps(transcript_segments[0] if transcript_segments else {}, indent=2)}")
     
     return segments
 

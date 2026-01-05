@@ -14,7 +14,17 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from enum import Enum
 from datetime import datetime
-from logger_config import logger
+
+try:
+    from logger_config import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger('video_queue')
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
 
 
 class VideoStatus(Enum):
@@ -183,7 +193,29 @@ class VideoQueue:
                     # Only allow removal if queued or error
                     if item.status in [VideoStatus.QUEUED.value, VideoStatus.ERROR.value]:
                         self.queue.pop(i)
+                        # Also remove from results
+                        self.results.pop(item_id, None)
+                        logger.info(f"Removed item from queue: {item_id}")
                         return True
+            return False
+    
+    def reanalyze(self, item_id: str) -> bool:
+        """Re-analyze a video by resetting its status and clearing results."""
+        with self.lock:
+            for item in self.queue:
+                if item.id == item_id:
+                    # Reset status to queued
+                    item.status = VideoStatus.QUEUED.value
+                    item.progress = 0
+                    item.current_step = None
+                    item.error = None
+                    item.completed_at = None
+                    # Clear previous results
+                    self.results.pop(item_id, None)
+                    logger.info(f"Reset item for re-analysis: {item_id} ({item.filename})")
+                    # Start processor if not running
+                    self._start_processor()
+                    return True
             return False
     
     def get_status(self) -> Dict[str, Any]:

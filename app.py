@@ -25,19 +25,19 @@ app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)  # Generate a secret key for sessions
 CORS(app)
 
-# Log application startup
-logger.info("=" * 60)
-logger.info("Video Editor Application Starting")
-logger.info(f"Upload folder: {UPLOAD_FOLDER}")
-logger.info(f"Thumbnails folder: {THUMBNAILS_FOLDER}")
-logger.info("=" * 60)
-
 # Configuration
 UPLOAD_FOLDER = Path(__file__).parent / 'uploads'
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 THUMBNAILS_FOLDER = UPLOAD_FOLDER / 'thumbnails'
 THUMBNAILS_FOLDER.mkdir(exist_ok=True)
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'webm'}
+
+# Log application startup
+logger.info("=" * 60)
+logger.info("Video Editor Application Starting")
+logger.info(f"Upload folder: {UPLOAD_FOLDER}")
+logger.info(f"Thumbnails folder: {THUMBNAILS_FOLDER}")
+logger.info("=" * 60)
 
 
 def allowed_file(filename):
@@ -508,6 +508,28 @@ def remove_from_queue(item_id):
             return jsonify({'error': 'Item not found or cannot be removed'}), 404
         
     except Exception as e:
+        logger.error(f"Error removing item from queue: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/queue/reanalyze/<item_id>', methods=['POST'])
+def reanalyze_video(item_id):
+    """Re-analyze a video by resetting its status."""
+    logger.info(f"Re-analysis requested for item: {item_id}")
+    try:
+        from video_queue import get_queue
+        queue = get_queue()
+        
+        success = queue.reanalyze(item_id)
+        
+        if not success:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        logger.info(f"Successfully queued item for re-analysis: {item_id}")
+        return jsonify({'success': True, 'message': 'Video queued for re-analysis'})
+        
+    except Exception as e:
+        logger.error(f"Error re-analyzing video: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

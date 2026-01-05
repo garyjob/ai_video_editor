@@ -49,6 +49,15 @@ Logs are stored in the `logs/` directory with daily rotation:
 
 ## Viewing Logs
 
+### Quick Access Script
+Use the provided script for easy log viewing:
+```bash
+./view_logs.sh          # Last 50 lines (default)
+./view_logs.sh errors    # Only errors and warnings
+./view_logs.sh recent    # Last 100 lines
+./view_logs.sh full      # Entire log file
+```
+
 ### Real-time Logs (Console)
 Logs are displayed in the console/terminal where you run the Flask app.
 
@@ -67,6 +76,29 @@ Search for errors:
 ```bash
 grep ERROR logs/video_editor_*.log
 ```
+
+### Sharing Logs for Debugging
+When you encounter an issue, you can easily share the log file:
+
+1. **Find the log file:**
+   ```bash
+   ls -lh logs/video_editor_*.log
+   ```
+
+2. **View recent errors:**
+   ```bash
+   ./view_logs.sh errors
+   ```
+
+3. **Copy the log file path:**
+   ```bash
+   echo "$(pwd)/logs/video_editor_$(date +%Y%m%d).log"
+   ```
+
+4. **Share the log file** - You can:
+   - Copy the file path and I can read it
+   - Share the last N lines: `tail -100 logs/video_editor_*.log`
+   - Share only errors: `./view_logs.sh errors`
 
 ## Log Format
 

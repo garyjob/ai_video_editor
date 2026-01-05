@@ -572,7 +572,12 @@
                     <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: white;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                             <strong>📹 ${item.filename || item.path}</strong>
-                            <div style="font-size: 12px; color: #666;">${segments.length} segments | ${item.duration ? item.duration.toFixed(1) + 's' : ''}</div>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="font-size: 12px; color: #666;">${segments.length} segments | ${item.duration ? item.duration.toFixed(1) + 's' : ''}</div>
+                                <button onclick="reanalyzeVideo('${item.id}')" style="padding: 6px 12px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
+                                    🔄 Re-analyze
+                                </button>
+                            </div>
                         </div>
                         <div style="font-size: 13px; color: #666;">
                             Quality Score: ${result.summary?.average_quality?.toFixed(2) || 'N/A'} | 
@@ -679,6 +684,31 @@
             setTimeout(() => {
                 container.innerHTML = '';
             }, 5000);
+        }
+        
+        // Re-analyze video
+        async function reanalyzeVideo(itemId) {
+            if (!confirm('Re-analyze this video? This will reset the current analysis and start over.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/queue/reanalyze/${itemId}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showMessage(inputMessage, '✅ Video queued for re-analysis. Processing will start shortly...', 'success');
+                    // Update queue immediately
+                    updateQueue();
+                } else {
+                    showMessage(inputMessage, `❌ Error: ${data.error || 'Failed to queue re-analysis'}`, 'error');
+                }
+            } catch (error) {
+                showMessage(inputMessage, `❌ Error: ${error.message}`, 'error');
+            }
         }
         
         // Poll for queue updates every 3 seconds

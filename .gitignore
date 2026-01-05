@@ -73,3 +73,8 @@ Desktop.ini
 
 # Model cache (Whisper models can be large)
 .whisper_cache/
+
+# YOLO model files (downloaded automatically by ultralytics)
+*.pt
+yolov8*.pt
+.ultralytics/

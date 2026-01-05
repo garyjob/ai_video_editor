@@ -164,21 +164,57 @@ def check_system_dependencies():
     """Check for system dependencies."""
     print_step(6, "Checking system dependencies...")
     
+    missing_deps = []
+    
     # Check for ffmpeg
     result = run_command("which ffmpeg", check=False)
     if result.returncode == 0:
         print("✅ ffmpeg found")
     else:
         print("⚠️  ffmpeg not found")
-        print("   Install with: brew install ffmpeg (macOS) or apt-get install ffmpeg (Linux)")
+        print("   Required for video processing and thumbnail generation")
+        if sys.platform == 'darwin':
+            print("   Install with: brew install ffmpeg")
+        elif sys.platform.startswith('linux'):
+            print("   Install with: sudo apt-get install ffmpeg")
+        else:
+            print("   Install from: https://ffmpeg.org/download.html")
+        missing_deps.append("ffmpeg")
     
     # Check for cmake (needed for some packages)
     result = run_command("which cmake", check=False)
     if result.returncode == 0:
         print("✅ cmake found")
     else:
-        print("⚠️  cmake not found (may be needed for some dependencies)")
-        print("   Install with: brew install cmake (macOS)")
+        print("⚠️  cmake not found (needed for building llvmlite/numba)")
+        if sys.platform == 'darwin':
+            print("   Install with: brew install cmake")
+        elif sys.platform.startswith('linux'):
+            print("   Install with: sudo apt-get install cmake")
+        else:
+            print("   Install from: https://cmake.org/download/")
+        missing_deps.append("cmake")
+    
+    # Check for llvm (needed for llvmlite on some systems)
+    result = run_command("which llvm-config", check=False)
+    if result.returncode == 0:
+        print("✅ llvm found")
+    else:
+        # llvm is optional on some systems, but helpful for building llvmlite
+        if sys.platform == 'darwin':
+            print("ℹ️  llvm not found (optional but recommended)")
+            print("   Install with: brew install llvm")
+            print("   This helps build llvmlite/numba more reliably")
+    
+    if missing_deps:
+        print(f"\n⚠️  Missing required dependencies: {', '.join(missing_deps)}")
+        print("   Please install them before continuing.")
+        response = input("\nContinue anyway? (y/N): ").strip().lower()
+        if response != 'y':
+            print("Setup cancelled. Please install missing dependencies first.")
+            sys.exit(1)
+    else:
+        print("\n✅ All system dependencies found!")
 
 def print_next_steps():
     """Print next steps for the user."""

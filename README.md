@@ -40,28 +40,43 @@ video_editor/
 
 ### Prerequisites
 
+**System Dependencies:**
 - Python 3.11 or higher
-- ffmpeg (for video processing)
-- cmake (for some dependencies)
-- macOS, Linux, or Windows
+- ffmpeg (for video processing) - `brew install ffmpeg` (macOS)
+- cmake (for building dependencies) - `brew install cmake` (macOS)
+- llvm (optional but recommended) - `brew install llvm` (macOS)
+
+**Note:** See [SYSTEM_DEPENDENCIES.md](SYSTEM_DEPENDENCIES.md) for detailed installation instructions.
 
 ### Installation
 
-1. **Clone the repository:**
+1. **Install system dependencies first:**
+   ```bash
+   # macOS
+   brew install ffmpeg cmake llvm
+   
+   # Linux (Ubuntu/Debian)
+   sudo apt-get install ffmpeg cmake
+   ```
+
+2. **Clone the repository:**
    ```bash
    git clone git@github.com:garyjob/ai_video_editor.git
    cd ai_video_editor
    ```
 
-2. **Run the setup script:**
+3. **Run the setup script:**
    ```bash
    python3 setup.py
    ```
    
    This will:
+   - Check for system dependencies
    - Create a virtual environment
-   - Install all dependencies
+   - Install all Python packages
    - Guide you through configuration
+   
+   **Note:** The setup script checks for system dependencies but does NOT install them automatically. Install them manually first (see step 1).
 
 3. **Activate the virtual environment:**
    ```bash
@@ -212,16 +227,51 @@ All sensitive files are excluded via `.gitignore`.
 
 ## 📊 Logging
 
-The application includes comprehensive logging:
+The application includes comprehensive logging with **automatic file logging** for easy debugging:
 
 - **Console**: Real-time logs with timestamps
-- **File**: Detailed logs in `logs/video_editor_YYYYMMDD.log`
-- **Levels**: DEBUG, INFO, WARNING, ERROR
+- **File**: Detailed logs in `logs/video_editor_YYYYMMDD.log` (automatically created)
+- **Levels**: DEBUG, INFO, WARNING, ERROR (with full stack traces)
 
-View logs:
+### Viewing Logs
+
+**Quick view (last 50 lines):**
+```bash
+./view_logs.sh
+```
+
+**View only errors:**
+```bash
+./view_logs.sh errors
+```
+
+**Real-time monitoring:**
 ```bash
 tail -f logs/video_editor_$(date +%Y%m%d).log
 ```
+
+**Full log file:**
+```bash
+./view_logs.sh full
+```
+
+### Sharing Logs for Debugging
+
+When reporting issues, you can easily share the log file:
+```bash
+# Copy the log file path
+echo "Log file: $(pwd)/logs/video_editor_$(date +%Y%m%d).log"
+
+# Or view recent errors
+./view_logs.sh errors
+```
+
+The log file contains:
+- Full stack traces for all errors
+- Timestamps for every operation
+- File names and line numbers
+- All API requests and responses
+- Video processing progress
 
 See [LOGGING.md](LOGGING.md) for more details.
 
