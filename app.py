@@ -56,6 +56,39 @@ def serve_thumbnail(filename):
         return '', 404
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """Serve favicon."""
+    static_folder = Path(__file__).parent / 'static'
+    try:
+        return send_from_directory(str(static_folder), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    except Exception as e:
+        logger.debug(f"Favicon not found: {e}")
+        return '', 404
+
+
+@app.route('/favicon-<size>.png')
+def favicon_png(size):
+    """Serve PNG favicon."""
+    static_folder = Path(__file__).parent / 'static'
+    try:
+        return send_from_directory(str(static_folder), f'favicon-{size}.png', mimetype='image/png')
+    except Exception as e:
+        logger.debug(f"Favicon PNG not found: {e}")
+        return '', 404
+
+
+@app.route('/apple-touch-icon.png')
+def apple_touch_icon():
+    """Serve Apple touch icon."""
+    static_folder = Path(__file__).parent / 'static'
+    try:
+        return send_from_directory(str(static_folder), 'apple-touch-icon.png', mimetype='image/png')
+    except Exception as e:
+        logger.debug(f"Apple touch icon not found: {e}")
+        return '', 404
+
+
 @app.route('/')
 def index():
     """Render main page."""
@@ -74,23 +107,13 @@ def list_accounts():
 def upload_video():
     """Handle video upload request."""
     try:
-        # Check if file is present
-        if 'video' not in request.files:
-            return jsonify({'error': 'No video file provided'}), 400
-        
-        file = request.files['video']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if not allowed_file(file.filename):
-            return jsonify({'error': 'File type not allowed'}), 400
-        
         # Get form data
         account_email = request.form.get('account')
         title = request.form.get('title', '')
         description = request.form.get('description', '')
         privacy = request.form.get('privacy', 'public')
         tags_str = request.form.get('tags', '')
+        generated_video_path = request.form.get('generated_video_path')
         
         if not account_email:
             return jsonify({'error': 'No account specified'}), 400
@@ -101,10 +124,26 @@ def upload_video():
         # Parse tags
         tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()] if tags_str else []
         
-        # Save uploaded file
-        filename = file.filename
-        filepath = UPLOAD_FOLDER / filename
-        file.save(str(filepath))
+        # Use generated video if provided, otherwise get from file upload
+        if generated_video_path and Path(generated_video_path).exists():
+            filepath = Path(generated_video_path)
+            logger.info(f"Using generated video: {filepath}")
+        else:
+            # Check if file is present
+            if 'video' not in request.files:
+                return jsonify({'error': 'No video file provided'}), 400
+            
+            file = request.files['video']
+            if file.filename == '':
+                return jsonify({'error': 'No file selected'}), 400
+            
+            if not allowed_file(file.filename):
+                return jsonify({'error': 'File type not allowed'}), 400
+            
+            # Save uploaded file
+            filename = file.filename
+            filepath = UPLOAD_FOLDER / filename
+            file.save(str(filepath))
         
         # Upload to YouTube
         uploader = YouTubeUploader(account_email)
@@ -580,13 +619,21 @@ def process_with_grok():
         if not analysis_data["videos"]:
             return jsonify({'error': 'No analysis results found'}), 400
         
-        # Get target duration from request
+        # Get parameters from request
         data = request.json or {}
         target_min = data.get('target_duration_min', 15)
         target_max = data.get('target_duration_max', 60)
+        user_direction = data.get('user_direction', '').strip()
+        additional_context = data.get('additional_context', '').strip()
         
-        # Call Grok
-        editing_plan = analyze_video_segments(analysis_data, target_min, target_max)
+        # Call Grok with user direction and context
+        editing_plan = analyze_video_segments(
+            analysis_data, 
+            target_min, 
+            target_max,
+            user_direction=user_direction if user_direction else None,
+            additional_context=additional_context if additional_context else None
+        )
         
         return jsonify({
             'success': True,
@@ -594,7 +641,88 @@ def process_with_grok():
         })
         
     except Exception as e:
+        logger.error(f"Error processing with Grok: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/grok/generate-video', methods=['POST'])
+def generate_video():
+    """Generate final video from Grok's editing plan."""
+    try:
+        from video_queue import get_queue
+        from video_editor import generate_video_from_plan
+        
+        data = request.json or {}
+        editing_plan = data.get('editing_plan')
+        
+        if not editing_plan:
+            return jsonify({'error': 'No editing plan provided'}), 400
+        
+        queue = get_queue()
+        status = queue.get_status()
+        
+        # Build mapping of video filenames to file paths
+        source_videos = {}
+        for item in status['queue']:
+            if item['status'] == 'complete':
+                result = queue.get_result(item['id'])
+                if result:
+                    filename = result.get('file', '')
+                    filepath = result.get('path', '')
+                    if filename and filepath and Path(filepath).exists():
+                        source_videos[filename] = filepath
+        
+        if not source_videos:
+            return jsonify({'error': 'No source videos found'}), 400
+        
+        # Generate video
+        def progress_callback(message, percent):
+            # Could use WebSocket or Server-Sent Events for real-time updates
+            logger.info(f"Video generation: {message} ({percent}%)")
+        
+        output_path = generate_video_from_plan(
+            editing_plan,
+            source_videos,
+            progress_callback=progress_callback
+        )
+        
+        # Get video metadata
+        import subprocess
+        ffprobe_path = shutil.which("ffprobe") or "/usr/local/bin/ffprobe"
+        duration_cmd = [
+            ffprobe_path, "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", output_path
+        ]
+        duration_result = subprocess.run(duration_cmd, capture_output=True, text=True)
+        duration = 0
+        if duration_result.returncode == 0:
+            try:
+                duration = float(duration_result.stdout.strip())
+            except:
+                pass
+        
+        return jsonify({
+            'success': True,
+            'video_path': output_path,
+            'video_url': f'/api/generated-video/{Path(output_path).name}',
+            'filename': Path(output_path).name,
+            'duration': duration
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating video: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/generated-video/<filename>')
+def serve_generated_video(filename):
+    """Serve generated video files."""
+    try:
+        generated_folder = Path(__file__).parent / 'uploads' / 'generated'
+        return send_from_directory(str(generated_folder), filename)
+    except Exception as e:
+        logger.error(f"Error serving generated video {filename}: {e}", exc_info=True)
+        return '', 404
 
 
 if __name__ == '__main__':

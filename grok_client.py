@@ -39,7 +39,13 @@ def get_grok_api_key() -> Optional[str]:
     return None
 
 
-def analyze_video_segments(analysis_data: Dict[str, Any], target_duration_min: int = 15, target_duration_max: int = 60) -> Dict[str, Any]:
+def analyze_video_segments(
+    analysis_data: Dict[str, Any], 
+    target_duration_min: int = 15, 
+    target_duration_max: int = 60,
+    user_direction: Optional[str] = None,
+    additional_context: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Send video analysis to Grok and get editing suggestions.
     
@@ -47,6 +53,8 @@ def analyze_video_segments(analysis_data: Dict[str, Any], target_duration_min: i
         analysis_data: Video analysis data (from video_analyzer.py)
         target_duration_min: Minimum output duration in seconds (default: 15)
         target_duration_max: Maximum output duration in seconds (default: 60)
+        user_direction: User's direction/instructions for the video (optional)
+        additional_context: Additional context from user (optional)
     
     Returns:
         Dict with editing plan and metadata
@@ -56,7 +64,7 @@ def analyze_video_segments(analysis_data: Dict[str, Any], target_duration_min: i
         raise ValueError("GROK_API_KEY not configured. Set environment variable or .env file.")
     
     # Build prompt from analysis data
-    prompt = build_grok_prompt(analysis_data, target_duration_min, target_duration_max)
+    prompt = build_grok_prompt(analysis_data, target_duration_min, target_duration_max, user_direction, additional_context)
     
     # Prepare API request
     payload = {
@@ -170,16 +178,45 @@ Respond ONLY with valid JSON in this exact format:
 }"""
 
 
-def build_grok_prompt(analysis_data: Dict[str, Any], target_duration_min: int, target_duration_max: int) -> str:
+def build_grok_prompt(
+    analysis_data: Dict[str, Any], 
+    target_duration_min: int, 
+    target_duration_max: int,
+    user_direction: Optional[str] = None,
+    additional_context: Optional[str] = None
+) -> str:
     """Build prompt for Grok from analysis data."""
     
     prompt_parts = [
         f"You are analyzing video content to create a YouTube Short (vertical format, {target_duration_min}-{target_duration_max} seconds).",
-        "",
+        ""
+    ]
+    
+    # Add user direction if provided
+    if user_direction and user_direction.strip():
+        prompt_parts.extend([
+            "USER DIRECTION & INSTRUCTIONS:",
+            "=" * 60,
+            user_direction.strip(),
+            "",
+            "IMPORTANT: Follow the user's direction above when creating the editing plan.",
+            ""
+        ])
+    
+    # Add additional context if provided
+    if additional_context and additional_context.strip():
+        prompt_parts.extend([
+            "ADDITIONAL CONTEXT:",
+            "=" * 60,
+            additional_context.strip(),
+            ""
+        ])
+    
+    prompt_parts.extend([
         "Video Analysis Data:",
         "=" * 60,
         ""
-    ]
+    ])
     
     # Add video summaries
     for video in analysis_data.get("videos", []):

@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Editor - Create YouTube Shorts</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <style>
         * {
             margin: 0;
@@ -269,30 +273,81 @@
             <div id="inputMessage"></div>
         </div>
         
-        <!-- Step 2: Processing Queue -->
+        <!-- Step 2: Processing Queue & Analysis -->
         <div class="workflow-section" id="processingQueueSection" style="display: none;">
-            <h2>Step 2: Processing Queue (<span id="queueCount">0</span> videos)</h2>
+            <h2>Processing Queue (<span id="queueCount">0</span> videos)</h2>
             <div id="queueContainer">
                 <div style="text-align: center; padding: 40px; color: #999;">No videos in queue.</div>
             </div>
         </div>
         
-        <!-- Step 3: Analysis Results -->
-        <div class="workflow-section" id="analysisSection" style="display: none;">
-            <h2>Step 3: Analysis Results</h2>
-            <div id="resultsContainer"></div>
-        </div>
-        
-        <!-- Step 4: Grok Processing -->
+        <!-- Step 3: Grok Processing -->
         <div class="workflow-section" id="grokSection" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-            <h2 style="color: white;">Step 4: AI Processing</h2>
-            <p style="margin-bottom: 16px; opacity: 0.9;">All videos have been analyzed. Click below to generate YouTube Short with Grok.</p>
-            <button class="upload-button" id="processWithGrok" style="background: white; color: #667eea; max-width: 300px;">🎬 Process with Grok</button>
+            <h2 style="color: white;">Step 3: AI Processing with Grok</h2>
+            <p style="margin-bottom: 16px; opacity: 0.9;">All videos have been analyzed. Provide direction and context for Grok to create your YouTube Short.</p>
+            
+            <div style="background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="grokDirection" style="color: white; font-weight: 500; margin-bottom: 8px; display: block;">
+                        Direction & Instructions <span style="opacity: 0.8;">(What kind of video do you want?)</span>
+                    </label>
+                    <textarea 
+                        id="grokDirection" 
+                        name="grokDirection" 
+                        rows="4" 
+                        placeholder="e.g., Create a fast-paced montage highlighting the best moments, focus on action scenes, make it energetic and engaging..."
+                        style="width: 100%; padding: 12px; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; font-size: 14px; font-family: inherit; background: rgba(255, 255, 255, 0.95); color: #333;"
+                    ></textarea>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="grokContext" style="color: white; font-weight: 500; margin-bottom: 8px; display: block;">
+                        Additional Context <span style="opacity: 0.8;">(Optional - any additional information)</span>
+                    </label>
+                    <textarea 
+                        id="grokContext" 
+                        name="grokContext" 
+                        rows="3" 
+                        placeholder="e.g., Target audience is young adults, prefer upbeat music, emphasize visual storytelling..."
+                        style="width: 100%; padding: 12px; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; font-size: 14px; font-family: inherit; background: rgba(255, 255, 255, 0.95); color: #333;"
+                    ></textarea>
+                </div>
+            </div>
+            
+            <button class="upload-button" id="processWithGrok" style="background: white; color: #667eea; max-width: 300px;">🎬 Generate Video with Grok</button>
         </div>
         
-        <!-- Step 5: Review & Upload -->
+        <!-- Step 3.5: Video Generation Progress -->
+        <div class="workflow-section" id="videoGenerationSection" style="display: none;">
+            <h2>Step 3.5: Generating Edited Video</h2>
+            <div id="generationProgress" style="text-align: center; padding: 40px;">
+                <div class="progress-bar" style="max-width: 500px; margin: 0 auto 20px;">
+                    <div class="progress-fill" id="generationProgressFill" style="width: 0%"></div>
+                </div>
+                <div id="generationStatus" style="font-size: 14px; color: #666;">Preparing video generation...</div>
+            </div>
+        </div>
+        
+        <!-- Step 3.6: Generated Video Preview -->
+        <div class="workflow-section" id="videoPreviewSection" style="display: none;">
+            <h2>Step 3.6: Generated Video Preview</h2>
+            <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+                <div id="generatedVideoPreview" style="text-align: center;">
+                    <video id="previewVideo" controls style="max-width: 100%; max-height: 500px; border-radius: 8px; background: #000;" preload="metadata">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                <div id="generatedVideoInfo" style="margin-top: 16px; font-size: 14px; color: #666;">
+                    <div><strong>Duration:</strong> <span id="previewDuration">-</span></div>
+                    <div><strong>File:</strong> <span id="previewFilename">-</span></div>
+                </div>
+            </div>
+            <button class="upload-button" id="proceedToUpload" style="max-width: 300px;">✅ Proceed to Upload</button>
+        </div>
+        
+        <!-- Step 4: Review & Upload -->
         <div class="workflow-section" id="uploadSection" style="display: none;">
-            <h2>Step 5: Review & Upload to YouTube</h2>
+            <h2>Step 4: Review & Upload to YouTube</h2>
             <form id="uploadForm" enctype="multipart/form-data">
                 <div class="form-group">
                     <label for="account">
@@ -350,6 +405,9 @@
         // Queue management (from process.html)
         let queue = [];
         let analysisResults = {};
+        let editingPlan = null;
+        let generatedVideoPath = null;
+        let generatedVideoUrl = null;
         let selectedFiles = [];
         let editingPlan = null;
         
@@ -364,8 +422,6 @@
         const queueCount = document.getElementById('queueCount');
         const inputMessage = document.getElementById('inputMessage');
         const processingQueueSection = document.getElementById('processingQueueSection');
-        const analysisSection = document.getElementById('analysisSection');
-        const resultsContainer = document.getElementById('resultsContainer');
         const grokSection = document.getElementById('grokSection');
         const processWithGrokBtn = document.getElementById('processWithGrok');
         const uploadSection = document.getElementById('uploadSection');
@@ -491,7 +547,6 @@
                     queue = data.queue || [];
                     analysisResults = data.results || {};
                     renderQueue();
-                    renderResults();
                     checkGrokReady();
                 }
             } catch (error) {
@@ -532,56 +587,140 @@
                 }
                 
                 const thumbnailHTML = item.thumbnail_path ? 
-                    `<img src="${item.thumbnail_path}" alt="Video thumbnail" style="width: 120px; height: 68px; object-fit: cover; border-radius: 4px; margin-right: 12px; background: #f0f0f0; flex-shrink: 0;" />` : 
-                    `<div style="width: 120px; height: 68px; background: #e0e0e0; border-radius: 4px; margin-right: 12px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24px; flex-shrink: 0;">📹</div>`;
+                    `<img src="${item.thumbnail_path}" alt="Video thumbnail" style="width: 160px; height: 90px; object-fit: cover; border-radius: 6px; margin-right: 16px; background: #f0f0f0; flex-shrink: 0;" />` : 
+                    `<div style="width: 160px; height: 90px; background: #e0e0e0; border-radius: 6px; margin-right: 16px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 32px; flex-shrink: 0;">📹</div>`;
+                
+                // Get analysis results if complete
+                let analysisHTML = '';
+                if (item.status === 'complete') {
+                    const result = analysisResults[item.id];
+                    if (result) {
+                        const segments = result.segments || [];
+                        const transcriptTexts = segments.map(seg => {
+                            const text = seg.transcript?.full_text || '';
+                            const speaker = seg.speaker || seg.transcript?.speaker;
+                            if (speaker && text) {
+                                return `[${speaker}]: ${text}`;
+                            }
+                            return text;
+                        }).filter(t => t.trim());
+                        const hasTranscript = transcriptTexts.length > 0;
+                        const fullTranscript = transcriptTexts.join(' ').trim();
+                        const speakerCount = result.speaker_count || 0;
+                        const speakers = result.speakers || [];
+                        
+                        analysisHTML = `
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid #e0e0e0;">
+                                ${hasTranscript ? `
+                                    <div style="background: #f8f9fa; border-left: 3px solid #4285f4; padding: 12px; margin-bottom: 12px; border-radius: 4px;">
+                                        <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 6px; font-weight: 600;">
+                                            Transcribed Text
+                                            ${speakerCount > 1 ? ` <span style="color: #4285f4;">(${speakerCount} speakers detected)</span>` : ''}
+                                        </div>
+                                        <div style="font-size: 14px; color: #333; line-height: 1.5;">
+                                            ${fullTranscript || 'No speech detected'}
+                                        </div>
+                                        ${speakerCount > 1 && speakers.length > 0 ? `
+                                            <div style="font-size: 11px; color: #666; margin-top: 8px; padding-top: 8px; border-top: 1px solid #e0e0e0;">
+                                                <strong>Speakers:</strong> ${speakers.map((s, i) => `<span style="color: #4285f4;">${s}</span>`).join(', ')}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                ` : `
+                                    <div style="background: #fff3cd; border-left: 3px solid #ffc107; padding: 12px; margin-bottom: 12px; border-radius: 4px;">
+                                        <div style="font-size: 11px; color: #856404; text-transform: uppercase; margin-bottom: 4px; font-weight: 600;">⚠️ No Speech Detected</div>
+                                        <div style="font-size: 13px; color: #856404;">Video may not have audio track or speech</div>
+                                    </div>
+                                `}
+                                
+                                ${result.context ? `
+                                    <div style="background: #e8f5e9; border-left: 3px solid #4caf50; padding: 12px; margin-bottom: 12px; border-radius: 4px;">
+                                        <div style="font-size: 11px; color: #2e7d32; text-transform: uppercase; margin-bottom: 6px; font-weight: 600;">🎯 Video Context & Purpose</div>
+                                        <div style="font-size: 13px; color: #1b5e20; margin-bottom: 8px;">
+                                            <strong>Type:</strong> ${result.context.content_type || 'general'} | 
+                                            <strong>Duration:</strong> ${result.context.duration_category || 'unknown'}
+                                        </div>
+                                        ${result.context.scene_description ? `
+                                            <div style="font-size: 12px; color: #2e7d32; margin-bottom: 6px;">
+                                                ${result.context.scene_description}
+                                            </div>
+                                        ` : ''}
+                                        ${result.context.purpose_indicators && result.context.purpose_indicators.length > 0 ? `
+                                            <div style="font-size: 12px; color: #2e7d32;">
+                                                <strong>Purpose:</strong> ${result.context.purpose_indicators.join(', ')}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                ` : ''}
+                                
+                                <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: #666; margin-bottom: 12px;">
+                                    <div>
+                                        <strong>Quality:</strong> ${result.summary?.average_quality?.toFixed(2) || 'N/A'}
+                                    </div>
+                                    <div>
+                                        <strong>Objects:</strong> ${result.summary?.object_types?.length > 0 ? result.summary.object_types.join(', ') : 'None detected'}
+                                    </div>
+                                    <div>
+                                        <strong>Segments:</strong> ${segments.length}
+                                    </div>
+                                </div>
+                                
+                                ${segments.length > 0 ? `
+                                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">Segments:</div>
+                                        <div style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto;">
+                                            ${segments.slice(0, 5).map(seg => {
+                                                const speaker = seg.speaker || seg.transcript?.speaker;
+                                                const speakerLabel = speaker ? `<span style="background: #4285f4; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-right: 6px;">${speaker}</span>` : '';
+                                                return `
+                                                <div style="background: #f8f9fa; padding: 8px; border-radius: 4px; font-size: 12px;">
+                                                    <div style="color: #4285f4; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center;">
+                                                        ${speakerLabel}
+                                                        ${seg.time_range.start.toFixed(1)}s - ${seg.time_range.end.toFixed(1)}s
+                                                        ${seg.priority === 'high' ? ' ⭐' : ''}
+                                                    </div>
+                                                    <div style="color: #333;">${seg.transcript?.full_text || '(no transcript)'}</div>
+                                                    ${seg.objects && seg.objects.length > 0 ? `
+                                                        <div style="color: #666; margin-top: 4px; font-size: 11px;">
+                                                            Objects: ${seg.objects.map(o => o.name).join(', ')}
+                                                        </div>
+                                                    ` : ''}
+                                                </div>
+                                            `;
+                                            }).join('')}
+                                            ${segments.length > 5 ? `<div style="font-size: 11px; color: #999; padding: 8px;">... and ${segments.length - 5} more segments</div>` : ''}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
+                }
                 
                 return `
-                    <div class="queue-item ${statusClass}">
-                        <div style="display: flex; align-items: flex-start;">
+                    <div class="queue-item ${statusClass}" style="margin-bottom: 16px;">
+                        <div style="display: flex; gap: 16px; align-items: flex-start;">
                             ${thumbnailHTML}
                             <div style="flex: 1; min-width: 0;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                    <div style="font-weight: 500;">${item.filename || item.path} ${statusBadge}</div>
-                                    <div style="font-size: 12px; color: #666;">${item.duration ? item.duration.toFixed(1) + 's' : ''}</div>
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="font-weight: 500; font-size: 16px;">${item.filename || item.path} ${statusBadge}</div>
+                                        <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                            ${item.duration ? item.duration.toFixed(1) + 's' : ''}
+                                            ${item.status === 'complete' && analysisResults[item.id]?.summary?.was_truncated && analysisResults[item.id]?.summary?.original_duration ? 
+                                                ` <span style="color: #ff9800;">(analyzed first ${item.duration.toFixed(0)}s of ${analysisResults[item.id].summary.original_duration.toFixed(0)}s video)</span>` : ''}
+                                        </div>
+                                    </div>
+                                    ${item.status === 'complete' ? `
+                                        <button onclick="reanalyzeVideo('${item.id}')" style="padding: 6px 12px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
+                                            🔄 Re-analyze
+                                        </button>
+                                    ` : ''}
                                 </div>
                                 ${progressHTML}
                                 ${item.error ? '<div style="font-size: 13px; color: #ea4335; margin-top: 4px;">' + item.error + '</div>' : ''}
+                                ${analysisHTML}
                             </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-        
-        // Render results
-        function renderResults() {
-            const completed = queue.filter(item => item.status === 'complete');
-            
-            if (completed.length === 0) {
-                analysisSection.style.display = 'none';
-                return;
-            }
-            
-            analysisSection.style.display = 'block';
-            resultsContainer.innerHTML = completed.map(item => {
-                const result = analysisResults[item.id];
-                if (!result) return '';
-                
-                const segments = result.segments || [];
-                return `
-                    <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: white;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <strong>📹 ${item.filename || item.path}</strong>
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="font-size: 12px; color: #666;">${segments.length} segments | ${item.duration ? item.duration.toFixed(1) + 's' : ''}</div>
-                                <button onclick="reanalyzeVideo('${item.id}')" style="padding: 6px 12px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
-                                    🔄 Re-analyze
-                                </button>
-                            </div>
-                        </div>
-                        <div style="font-size: 13px; color: #666;">
-                            Quality Score: ${result.summary?.average_quality?.toFixed(2) || 'N/A'} | 
-                            Objects: ${result.summary?.object_types?.join(', ') || 'None'}
                         </div>
                     </div>
                 `;
@@ -643,6 +782,12 @@
             document.getElementById('progressFill').style.width = '0%';
             
             const formData = new FormData(uploadForm);
+            
+            // If we have a generated video, add it to the form
+            if (generatedVideoPath) {
+                // The upload endpoint should handle the generated video path
+                formData.append('generated_video_path', generatedVideoPath);
+            }
             
             try {
                 const response = await fetch('/api/upload', {
