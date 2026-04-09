@@ -39,6 +39,43 @@ def get_grok_api_key() -> Optional[str]:
     return None
 
 
+def grok_chat_completion(
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.75,
+    timeout: int = 45,
+    model: Optional[str] = None,
+) -> str:
+    """
+    Raw chat completion content (non-JSON). Caller parses.
+
+    Uses GROK_API_KEY from env or video_editor/.env (via get_grok_api_key).
+    """
+    api_key = get_grok_api_key()
+    if not api_key:
+        raise ValueError("GROK_API_KEY not configured.")
+    payload = {
+        "model": model or GROK_MODEL,
+        "temperature": float(temperature),
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    response = requests.post(GROK_ENDPOINT, headers=headers, json=payload, timeout=timeout)
+    if not response.ok:
+        raise Exception(f"Grok API error: {response.status_code} - {response.text}")
+    result = response.json()
+    if "choices" not in result or not result["choices"]:
+        raise Exception(f"Unexpected Grok response: {result}")
+    return str(result["choices"][0]["message"].get("content") or "")
+
+
 def analyze_video_segments(
     analysis_data: Dict[str, Any], 
     target_duration_min: int = 15, 
@@ -136,7 +173,7 @@ Your task is to analyze video segments and create an editing plan that:
 2. Favors moments viewers actually share: genuinely FUNNY (surprise, playful banter, relatable mishap) or AWE / DELIGHT (wonder, beauty, first taste, "wow" reactions, satisfying milestones).
 3. Suggests precise cut points and transitions
 4. Generates compelling title, description, and tags optimized for Shorts/Reels
-5. Ensures the final runtime fits the target duration (15-60 seconds)
+5. Ensures the final runtime fits the target duration (often 15-60s for Shorts; up to ~90s when the user asks for a longer compile)
 
 Respond ONLY with valid JSON in this exact format:
 {
@@ -273,6 +310,8 @@ def build_grok_prompt(
         "5. Generating title, description, and tags that lean humorous OR awe-inspiring where faithful to the footage",
         "",
         "Prioritize segments with strong transcripts that sound funny, surprising, or amazed; or strong visual payoffs. "
+        "When the data plausibly supports it, favor shots with people on camera and lively reactions "
+        "(laughter, excitement, tasting payoffs) over long stretches of neutral voiceover on repetitive visuals. "
         "Use editor_score and motion as tie-breakers, not the only signal. "
         "If two segments are similar in topic and framing, pick only the stronger one — diversify.",
         "",
