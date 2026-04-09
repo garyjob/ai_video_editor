@@ -130,12 +130,13 @@ def analyze_video_segments(
 
 def system_prompt() -> str:
     """System prompt for Grok."""
-    return """You are an expert video editor helping create YouTube Shorts (vertical 9:16 format, 15-60 seconds).
+    return """You are an expert video editor helping create YouTube Shorts / Instagram Reels (vertical 9:16, ~15-60 seconds).
 Your task is to analyze video segments and create an editing plan that:
-1. Selects the best segments to create a coherent, engaging short video
-2. Suggests precise cut points and transitions
-3. Generates compelling title, description, and tags optimized for YouTube Shorts
-4. Ensures the final video fits within the target duration (15-60 seconds)
+1. Selects segments that feel DIVERSE: avoid repeating the same activity/beat (e.g. many nearly identical "roast/stir" shots). Prefer a mix of process, reactions, sensory moments, and payoffs across clips.
+2. Favors moments viewers actually share: genuinely FUNNY (surprise, playful banter, relatable mishap) or AWE / DELIGHT (wonder, beauty, first taste, "wow" reactions, satisfying milestones).
+3. Suggests precise cut points and transitions
+4. Generates compelling title, description, and tags optimized for Shorts/Reels
+5. Ensures the final runtime fits the target duration (15-60 seconds)
 
 Respond ONLY with valid JSON in this exact format:
 {
@@ -226,41 +227,54 @@ def build_grok_prompt(
         prompt_parts.append(f"Video: {video.get('file', 'unknown')}")
         prompt_parts.append(f"Duration: {video.get('metadata', {}).get('duration', 0):.1f} seconds")
         prompt_parts.append(f"Total Segments: {len(segments)}")
+        sct = video.get("scene_change_times") or []
+        if sct:
+            prompt_parts.append(f"Scene-change cuts detected (FFmpeg): {len(sct)}")
         prompt_parts.append(f"Main Topics: {', '.join(video_summary.get('main_topics', []))}")
         prompt_parts.append("")
         
         # Add segment details (limited to avoid token limits)
         prompt_parts.append("Key Segments:")
-        for i, segment in enumerate(segments[:20]):  # Limit to first 20 segments per video
+        for i, segment in enumerate(segments[:28]):  # Wider coverage per video for diversity
             seg_id = segment.get("id", f"seg_{i}")
             time_range = segment.get("time_range", {})
             transcript = segment.get("transcript", {}).get("full_text", "")
             summary = segment.get("summary", "")
             priority = segment.get("priority", "medium")
             quality = segment.get("quality_score", 0.5)
+            editor = segment.get("editor_score")
+            vd = segment.get("visual_dynamics") or {}
             
             prompt_parts.append(f"\n{seg_id}:")
             prompt_parts.append(f"  Time: {time_range.get('start', 0):.1f}s - {time_range.get('end', 0):.1f}s ({time_range.get('end', 0) - time_range.get('start', 0):.1f}s)")
             prompt_parts.append(f"  Transcript: {transcript[:200]}{'...' if len(transcript) > 200 else ''}")
             prompt_parts.append(f"  Summary: {summary}")
-            prompt_parts.append(f"  Priority: {priority}, Quality: {quality:.2f}")
+            prompt_parts.append(f"  Priority: {priority}, Quality (speech): {quality:.2f}")
+            if editor is not None:
+                prompt_parts.append(
+                    f"  Editor score (speech+motion+scene): {float(editor):.2f}; "
+                    f"motion_norm_mean={vd.get('motion_mean_normalized', 'n/a')}, "
+                    f"scene_cuts_in_range={vd.get('scene_cuts_in_range', 0)}"
+                )
         
-        if len(segments) > 20:
-            prompt_parts.append(f"\n  ... ({len(segments) - 20} more segments)")
+        if len(segments) > 28:
+            prompt_parts.append(f"\n  ... ({len(segments) - 28} more segments)")
         prompt_parts.append("")
     
     # Add task instructions
     prompt_parts.extend([
         "=" * 60,
         "",
-        f"Task: Create an editing plan to produce a YouTube Short ({target_duration_min}-{target_duration_max} seconds) by:",
-        "1. Selecting the best segments from all videos",
-        "2. Arranging them in a coherent, engaging order",
+        f"Task: Create an editing plan to produce a vertical Short/Reel ({target_duration_min}-{target_duration_max} seconds) by:",
+        "1. Selecting segments from ALL available videos — vary activities (hands-on, talking/reactions, tasting/sipping, milestones). Do NOT select only one repetitive stage.",
+        "2. Ordering clips for narrative + emotional payoff (setup → interesting middle → satisfying or funny end when possible)",
         "3. Suggesting precise cut points if needed to fit duration",
         "4. Suggesting transitions between segments",
-        "5. Generating title, description, and tags optimized for YouTube Shorts",
+        "5. Generating title, description, and tags that lean humorous OR awe-inspiring where faithful to the footage",
         "",
-        "Prioritize segments with high quality scores and priority. Ensure the final video tells a complete story.",
+        "Prioritize segments with strong transcripts that sound funny, surprising, or amazed; or strong visual payoffs. "
+        "Use editor_score and motion as tie-breakers, not the only signal. "
+        "If two segments are similar in topic and framing, pick only the stronger one — diversify.",
         "",
         "Respond with JSON in the exact format specified in the system prompt."
     ])
