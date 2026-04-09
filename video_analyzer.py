@@ -25,7 +25,8 @@ except ImportError:
 
 def analyze_video(
     video_path: str,
-    progress_callback: Optional[Callable[[str, int], None]] = None
+    progress_callback: Optional[Callable[[str, int], None]] = None,
+    enrich_visual_dynamics: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Analyze video using Whisper and YOLO.
@@ -33,6 +34,8 @@ def analyze_video(
     Args:
         video_path: Path to video file
         progress_callback: Callback function(step: str, progress: int)
+        enrich_visual_dynamics: If True, add FFmpeg scene-cut + OpenCV motion scores
+            and per-segment editor_score. If None, uses env VIDEO_ENRICH=1 or true.
     
     Returns:
         Analysis results in structured format
@@ -88,6 +91,31 @@ def analyze_video(
         progress_callback("Creating segments...", 85)
     
     segments = create_segments(transcript_data, objects_data, metadata)
+
+    # Optional: scene-change + motion enrichment for ranking / Grok
+    if enrich_visual_dynamics is None:
+        enrich_visual_dynamics = os.environ.get("VIDEO_ENRICH", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+    scene_change_times: List[float] = []
+    if enrich_visual_dynamics:
+        try:
+            from segment_enrichment import enrich_analysis_result as _enrich_visual
+
+            partial = {
+                "path": str(video_path_obj.absolute()),
+                "metadata": metadata,
+                "segments": segments,
+                "file": video_path_obj.name,
+                "summary": {},
+            }
+            partial = _enrich_visual(partial, progress_callback=progress_callback)
+            segments = partial.get("segments", segments)
+            scene_change_times = partial.get("scene_change_times", [])
+        except Exception as e:
+            logger.warning("Visual dynamics enrichment skipped: %s", e, exc_info=True)
     
     if progress_callback:
         progress_callback("Finalizing analysis...", 95)
@@ -114,22 +142,30 @@ def analyze_video(
     
     # Build analysis result
     filename = video_path_obj.name
+    summary = {
+        "main_topics": extract_topics(segments),
+        "total_segments": len(segments),
+        "total_duration": metadata.get("duration", 0),
+        "original_duration": metadata.get("original_duration", metadata.get("duration", 0)),
+        "was_truncated": metadata.get("truncated", False),
+        "object_types": list(set(obj["name"] for seg in segments for obj in seg.get("objects", []))),
+        "average_quality": sum(seg.get("quality_score", 0.5) for seg in segments) / len(segments) if segments else 0.5
+    }
+    if enrich_visual_dynamics and segments:
+        eds = [float(s.get("editor_score", 0)) for s in segments]
+        summary["average_editor_score"] = sum(eds) / len(eds) if eds else 0.0
+        summary["scene_cut_count"] = len(scene_change_times)
+
     result = {
         "file": filename,
         "path": str(video_path_obj.absolute()),
         "metadata": metadata,
         "segments": segments,
         "context": video_context,  # New: video purpose/context
-        "summary": {
-            "main_topics": extract_topics(segments),
-            "total_segments": len(segments),
-            "total_duration": metadata.get("duration", 0),
-            "original_duration": metadata.get("original_duration", metadata.get("duration", 0)),
-            "was_truncated": metadata.get("truncated", False),
-            "object_types": list(set(obj["name"] for seg in segments for obj in seg.get("objects", []))),
-            "average_quality": sum(seg.get("quality_score", 0.5) for seg in segments) / len(segments) if segments else 0.5
-        }
+        "summary": summary,
     }
+    if scene_change_times:
+        result["scene_change_times"] = scene_change_times
     
     if progress_callback:
         progress_callback("Complete", 100)
