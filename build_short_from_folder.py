@@ -5,13 +5,19 @@ local MMR selection (diverse + humor/awe hooks), render ~30s 9:16 letterboxed sh
 
 Keeps source audio (AAC in output). Title is overlaid on the first clip
 (yellow / outline / purple shadow, Arial Rounded on macOS), not a separate
-solid-color card.
+solid-color card; the hook is drawn on a transparent layer, tilted slightly
+(~6°) for a more social / energetic read. Hook lines 1–2 come from Whisper in
+that clip unless --title-line1/--title-line2 override; brand line defaults to
+Agroverse (--brand-line).
 
 Usage:
   ./venv/bin/python build_short_from_folder.py /path/to/folder [--limit 4] [--target 30]
 
 Requires: ffmpeg, venv deps (whisper, ultralytics, opencv optional).
 Grok optional: GROK_API_KEY in .env
+
+Re-analyze only when a clip changes (size/mtime) or EXTRACTION_PIPELINE_VERSION
+in analysis_cache.py is bumped.
 """
 
 from __future__ import annotations
@@ -25,11 +31,22 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from analysis_cache import (
+    load_cached_analysis,
+    save_cached_analysis,
+    cache_json_path,
+)
 from clip_postprocess import (
     apply_tail_padding_to_plan,
     reorder_plan_chronologically,
     sort_paths_by_creation_time,
     trim_plan_to_duration_ceiling,
+)
+from title_from_transcript import (
+    DEFAULT_BRAND_LINE,
+    DEFAULT_OVERLAY_LINE1,
+    DEFAULT_OVERLAY_LINE2,
+    overlay_lines_from_first_clip,
 )
 from reel_segment_selection import (
     mmr_pick_segments,
@@ -99,31 +116,58 @@ def _escape_drawtext_fontfile(path: str) -> str:
     return path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
-def _title_overlay_drawfilters(overlay_sec: float) -> str:
-    """Stacked drawtext filters: yellow + outline + purple shadow (reference short style)."""
+def _escape_filter_path(p: str) -> str:
+    """Escape a path for use in drawtext fontfile=/ textfile= inside -vf."""
+    return (
+        p.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace(" ", "\\ ")
+    )
+
+
+# Title block lean (~10° CCW feels energetic; drawn on rgba then rotated — see ffmpeg_extract_letterbox).
+_TITLE_TILT_RAD = -0.11
+_TITLE_ROT_W = 2400
+_TITLE_ROT_H = 2700
+
+
+def _title_overlay_drawtext_chain(
+    overlay_sec: float,
+    path_line1: Path,
+    path_line2: Path,
+    path_sub: Path,
+) -> str:
+    """Three drawtext filters (UTF-8 textfile). Use on a rgba plane; caller adds rotate + overlay.
+
+    Larger type, staggered x/y, same yellow / purple shadow / white brand as before.
+    """
     en = f"between(t\\,0\\,{overlay_sec:.3f})"
     font = _default_rounded_title_font()
     font_opt = ""
     if font:
         font_opt = f":fontfile={_escape_drawtext_fontfile(font)}"
-    # Reference: heavy rounded sans, yellow face, dark outline, purple extrusion shadow.
-    line1 = "Roasting chocolate"
-    line2 = "with Mulan"
-    sub = "Agroverse"
-    shadow = ":shadowx=6:shadowy=9:shadowcolor=0x5E35B1"
-    outline = ":borderw=4:bordercolor=black"
+    p1 = _escape_filter_path(str(path_line1.resolve()))
+    p2 = _escape_filter_path(str(path_line2.resolve()))
+    p3 = _escape_filter_path(str(path_sub.resolve()))
+    fs_main = 84
+    fs_sub = 44
+    shadow = ":shadowx=7:shadowy=11:shadowcolor=0x5E35B1"
+    outline = ":borderw=5:bordercolor=black"
     d1 = (
-        f"drawtext=text='{line1}'{font_opt}:fontsize=64:fontcolor=#FFDD00{outline}{shadow}"
-        f":x=(w-text_w)/2:y=h*0.50:enable='{en}'"
+        f"drawtext=textfile='{p1}'{font_opt}:reload=0:fontsize={fs_main}:fontcolor=#FFDD00"
+        f"{outline}{shadow}:fix_bounds=1"
+        f":x=(w-text_w)/2-38:y=h*0.42:enable='{en}'"
     )
     d2 = (
-        f"drawtext=text='{line2}'{font_opt}:fontsize=64:fontcolor=#FFDD00{outline}{shadow}"
-        f":x=(w-text_w)/2:y=h*0.50+78:enable='{en}'"
+        f"drawtext=textfile='{p2}'{font_opt}:reload=0:fontsize={fs_main}:fontcolor=#FFDD00"
+        f"{outline}{shadow}:fix_bounds=1"
+        f":x=(w-text_w)/2+42:y=h*0.42+102:enable='{en}'"
     )
     d3 = (
-        f"drawtext=text='{sub}'{font_opt}:fontsize=34:fontcolor=#FFFFFF:borderw=2"
-        f":bordercolor=black:shadowx=3:shadowy=4:shadowcolor=0x333333"
-        f":x=(w-text_w)/2:y=h*0.50+160:enable='{en}'"
+        f"drawtext=textfile='{p3}'{font_opt}:reload=0:fontsize={fs_sub}:fontcolor=#FFFFFF:borderw=3"
+        f":bordercolor=black:shadowx=4:shadowy=5:shadowcolor=0x333333:fix_bounds=1"
+        f":x=(w-text_w)/2-12:y=h*0.42+218:enable='{en}'"
     )
     return ",".join([d1, d2, d3])
 
@@ -300,17 +344,30 @@ def ffmpeg_extract_letterbox(
     duration: float,
     out: Path,
     title_overlay_sec: Optional[float] = None,
+    title_lines: Optional[Tuple[str, str, str]] = None,
 ) -> None:
     """Extract segment, letterbox to 1080x1920, keep audio as AAC when present."""
     ffmpeg = shutil.which("ffmpeg") or "/usr/local/bin/ffmpeg"
+    rate = "30000/1001"
     vf_base = (
         "scale=1080:-2:force_original_aspect_ratio=decrease,"
         "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x1a1512,format=yuv420p"
     )
-    if title_overlay_sec and title_overlay_sec > 0:
-        vf = vf_base + "," + _title_overlay_drawfilters(title_overlay_sec)
-    else:
-        vf = vf_base
+    use_tilt_title = bool(title_overlay_sec and title_overlay_sec > 0)
+    title_chain = ""
+    if use_tilt_title:
+        l1, l2, sub = title_lines or (
+            DEFAULT_OVERLAY_LINE1,
+            DEFAULT_OVERLAY_LINE2,
+            DEFAULT_BRAND_LINE,
+        )
+        t1 = out.parent / f"{out.stem}_title_line1.txt"
+        t2 = out.parent / f"{out.stem}_title_line2.txt"
+        t3 = out.parent / f"{out.stem}_title_brand.txt"
+        t1.write_text((l1 or "").strip() + "\n", encoding="utf-8")
+        t2.write_text((l2 or "").strip() + "\n", encoding="utf-8")
+        t3.write_text((sub or "").strip() + "\n", encoding="utf-8")
+        title_chain = _title_overlay_drawtext_chain(float(title_overlay_sec), t1, t2, t3)
 
     has_audio = _ffprobe_has_audio(src)
     cmd: List[str] = [
@@ -330,24 +387,53 @@ def ffmpeg_extract_letterbox(
             "-i",
             "anullsrc=channel_layout=stereo:sample_rate=48000",
         ]
-    cmd += [
-        "-vf",
-        vf,
-        "-r",
-        "30000/1001",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "20",
-        "-pix_fmt",
-        "yuv420p",
-    ]
-    if has_audio:
+
+    if use_tilt_title:
+        d_color = f"{max(0.01, float(duration)):.6f}".rstrip("0").rstrip(".") or "0.01"
+        tilt = _TITLE_TILT_RAD
+        rw, rh = _TITLE_ROT_W, _TITLE_ROT_H
+        fc = (
+            f"[0:v]{vf_base}[bg];"
+            f"color=c=black@0:s=1080x1920:d={d_color}:r={rate},format=yuva420p,"
+            f"{title_chain},rotate={tilt}:fillcolor=black@0:ow={rw}:oh={rh}[tx];"
+            f"[bg][tx]overlay=(W-w)/2:(H-h)/2:format=auto[vout]"
+        )
         cmd += [
+            "-filter_complex",
+            fc,
             "-map",
-            "0:v:0",
+            "[vout]",
+            "-r",
+            rate,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+    else:
+        cmd += [
+            "-vf",
+            vf_base,
+            "-r",
+            rate,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+
+    if has_audio:
+        if not use_tilt_title:
+            cmd += ["-map", "0:v:0"]
+        cmd += [
             "-map",
             "0:a:0",
             "-c:a",
@@ -358,9 +444,9 @@ def ffmpeg_extract_letterbox(
             "48000",
         ]
     else:
+        if not use_tilt_title:
+            cmd += ["-map", "0:v:0"]
         cmd += [
-            "-map",
-            "0:v:0",
             "-map",
             "1:a:0",
             "-c:a",
@@ -426,10 +512,30 @@ def main() -> int:
     )
     ap.add_argument("--no-grok", action="store_true", help="Force local ranking only")
     ap.add_argument(
+        "--no-analysis-cache",
+        action="store_true",
+        help="Always run Whisper/YOLO/enrichment; ignore uploads/analysis_cache/",
+    )
+    ap.add_argument(
         "--template",
         type=str,
         default="",
         help="Grok template: roast, roast_hot_chocolate, ... See story_prompts.py / docs/STORY_TEMPLATES.md",
+    )
+    ap.add_argument(
+        "--title-line1",
+        default=None,
+        help="Override first title line (implies manual hook; empty string ok)",
+    )
+    ap.add_argument(
+        "--title-line2",
+        default=None,
+        help="Override second title line (use with --title-line1 or alone)",
+    )
+    ap.add_argument(
+        "--brand-line",
+        default=DEFAULT_BRAND_LINE,
+        help="Third overlay line under hook (default: Agroverse; use \"\" to clear)",
     )
     args = ap.parse_args()
 
@@ -457,10 +563,25 @@ def main() -> int:
     from video_analyzer import analyze_video
     from segment_enrichment import wrap_multivideo_for_grok
 
+    enrich_flag = True
     analyses: List[Dict[str, Any]] = []
     for i, p in enumerate(movs):
+        cpath = cache_json_path(root, p, enrich_flag)
+        cached: Optional[Dict[str, Any]] = None
+        if not args.no_analysis_cache:
+            cached = load_cached_analysis(cpath, p, enrich_flag)
+        if cached is not None:
+            print(f"  [{i+1}/{len(movs)}] {p.name} (cached analysis)")
+            analyses.append(cached)
+            continue
         print(f"  [{i+1}/{len(movs)}] {p.name}")
-        analyses.append(analyze_video(str(p), enrich_visual_dynamics=True))
+        result = analyze_video(str(p), enrich_visual_dynamics=enrich_flag)
+        analyses.append(result)
+        if not args.no_analysis_cache:
+            try:
+                save_cached_analysis(cpath, p, enrich_flag, result)
+            except OSError as e:
+                print("Warning: could not write analysis cache:", e, file=sys.stderr)
 
     bundle = wrap_multivideo_for_grok(analyses)
     (out_dir / "analysis_bundle.json").write_text(
@@ -547,6 +668,26 @@ def main() -> int:
     parts: List[Path] = []
     first_clip_done = False
 
+    first_spec: Optional[Dict[str, Any]] = None
+    for sid in order:
+        sp0 = by_id.get(sid)
+        if sp0:
+            first_spec = sp0
+            break
+
+    title_tuple: Optional[Tuple[str, str, str]] = None
+    if first_spec is not None:
+        brand = (args.brand_line or "").strip()
+        if args.title_line1 is not None or args.title_line2 is not None:
+            t1 = (args.title_line1 if args.title_line1 is not None else "").strip()
+            t2 = (args.title_line2 if args.title_line2 is not None else "").strip()
+            title_tuple = (t1, t2, brand)
+            print(f"Title overlay (manual): {t1!r} / {t2!r} — {brand!r}")
+        else:
+            l1, l2 = overlay_lines_from_first_clip(first_spec, analyses_by_file)
+            title_tuple = (l1, l2, brand)
+            print(f"Title overlay (transcript): {l1!r} / {l2!r} — {brand!r}")
+
     for idx, sid in enumerate(order, start=1):
         spec = by_id.get(sid)
         if not spec:
@@ -562,11 +703,15 @@ def main() -> int:
         dur = max(0.1, end - start)
         outp = out_dir / f"part_{idx:02d}_{sid}.mp4"
         overlay: Optional[float] = None
+        use_title_lines: Optional[Tuple[str, str, str]] = None
         if not first_clip_done:
             overlay = min(title_on_first_sec, max(1.5, dur * 0.35))
+            use_title_lines = title_tuple
             first_clip_done = True
         print(f"  extract {vf} {start:.1f}-{end:.1f}s -> {outp.name}")
-        ffmpeg_extract_letterbox(src, start, dur, outp, title_overlay_sec=overlay)
+        ffmpeg_extract_letterbox(
+            src, start, dur, outp, title_overlay_sec=overlay, title_lines=use_title_lines
+        )
         parts.append(outp)
 
     final = out_dir / "short_final.mp4"
