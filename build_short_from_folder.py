@@ -6,12 +6,14 @@ local MMR selection (diverse + humor/awe hooks), render ~30s 9:16 letterboxed sh
 Keeps source audio (AAC in output). Title is overlaid on the first clip
 (yellow / outline / purple shadow, Arial Rounded on macOS), not a separate
 solid-color card; the hook is drawn on a transparent layer, tilted slightly
-(~6°) for a more social / energetic read. Hook lines 1–2 come from Whisper in
-that clip unless --title-line1/--title-line2 override; brand line defaults to
-Agroverse (--brand-line).
+(~6°) for a more social / energetic read. Opening hook: Grok writes 2 ultra-short lines from the **full** multi-clip
+transcript (funny or curiosity), capped for large type; fallback is first-clip
+Whisper. Manual: --title-line1/--title-line2. Brand: --brand-line (default Agroverse).
 
 Usage:
   ./venv/bin/python build_short_from_folder.py /path/to/folder [--limit 4] [--target 30]
+  ./venv/bin/python build_short_from_folder.py /path/to/folder --target 60 --out-suffix 60s
+  ./venv/bin/python build_short_from_folder.py /path/to/folder --flexible-duration --max-total-sec 120
 
 Requires: ffmpeg, venv deps (whisper, ultralytics, opencv optional).
 Grok optional: GROK_API_KEY in .env
@@ -25,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -42,12 +45,17 @@ from clip_postprocess import (
     sort_paths_by_creation_time,
     trim_plan_to_duration_ceiling,
 )
+from grok_client import get_grok_api_key
 from title_from_transcript import (
     DEFAULT_BRAND_LINE,
     DEFAULT_OVERLAY_LINE1,
     DEFAULT_OVERLAY_LINE2,
+    collect_transcript_in_window,
     overlay_lines_from_first_clip,
 )
+from title_grok import build_full_transcript_context, grok_overlay_title_lines
+from title_layout import layout_hook_and_brand
+from speech_tighten import local_keep_intervals_simple
 from reel_segment_selection import (
     mmr_pick_segments,
     sketch_from_plan_spec,
@@ -128,48 +136,54 @@ def _escape_filter_path(p: str) -> str:
 
 # Title block lean (~10° CCW feels energetic; drawn on rgba then rotated — see ffmpeg_extract_letterbox).
 _TITLE_TILT_RAD = -0.11
-_TITLE_ROT_W = 2400
-_TITLE_ROT_H = 2700
+_TITLE_ROT_W = 2480
+_TITLE_ROT_H = 2850
+
+
+_TITLE_FS_MAIN = 96
+_TITLE_FS_SUB = 46
 
 
 def _title_overlay_drawtext_chain(
     overlay_sec: float,
-    path_line1: Path,
-    path_line2: Path,
-    path_sub: Path,
+    hook_paths: List[Path],
+    brand_paths: List[Path],
 ) -> str:
-    """Three drawtext filters (UTF-8 textfile). Use on a rgba plane; caller adds rotate + overlay.
+    """Stacked drawtext: UTF-8 textfiles, centered (max width enforced in layout)."""
 
-    Larger type, staggered x/y, same yellow / purple shadow / white brand as before.
-    """
     en = f"between(t\\,0\\,{overlay_sec:.3f})"
     font = _default_rounded_title_font()
     font_opt = ""
     if font:
         font_opt = f":fontfile={_escape_drawtext_fontfile(font)}"
-    p1 = _escape_filter_path(str(path_line1.resolve()))
-    p2 = _escape_filter_path(str(path_line2.resolve()))
-    p3 = _escape_filter_path(str(path_sub.resolve()))
-    fs_main = 84
-    fs_sub = 44
+    fs_main = _TITLE_FS_MAIN
+    fs_sub = _TITLE_FS_SUB
     shadow = ":shadowx=7:shadowy=11:shadowcolor=0x5E35B1"
     outline = ":borderw=5:bordercolor=black"
-    d1 = (
-        f"drawtext=textfile='{p1}'{font_opt}:reload=0:fontsize={fs_main}:fontcolor=#FFDD00"
-        f"{outline}{shadow}:fix_bounds=1"
-        f":x=(w-text_w)/2-38:y=h*0.42:enable='{en}'"
-    )
-    d2 = (
-        f"drawtext=textfile='{p2}'{font_opt}:reload=0:fontsize={fs_main}:fontcolor=#FFDD00"
-        f"{outline}{shadow}:fix_bounds=1"
-        f":x=(w-text_w)/2+42:y=h*0.42+102:enable='{en}'"
-    )
-    d3 = (
-        f"drawtext=textfile='{p3}'{font_opt}:reload=0:fontsize={fs_sub}:fontcolor=#FFFFFF:borderw=3"
-        f":bordercolor=black:shadowx=4:shadowy=5:shadowcolor=0x333333:fix_bounds=1"
-        f":x=(w-text_w)/2-12:y=h*0.42+218:enable='{en}'"
-    )
-    return ",".join([d1, d2, d3])
+    parts: List[str] = []
+    y0 = 0.36
+    lh_main = 108
+    gap_before_brand = 36
+    yi = y0
+    for p in hook_paths:
+        pp = _escape_filter_path(str(p.resolve()))
+        parts.append(
+            f"drawtext=textfile='{pp}'{font_opt}:reload=0:fontsize={fs_main}:fontcolor=#FFDD00"
+            f"{outline}{shadow}:fix_bounds=1"
+            f":x=(w-text_w)/2:y=h*{yi:.4f}:enable='{en}'"
+        )
+        yi += lh_main / 1920.0
+    if brand_paths:
+        yi += gap_before_brand / 1920.0
+    for p in brand_paths:
+        pp = _escape_filter_path(str(p.resolve()))
+        parts.append(
+            f"drawtext=textfile='{pp}'{font_opt}:reload=0:fontsize={fs_sub}:fontcolor=#FFFFFF:borderw=3"
+            f":bordercolor=black:shadowx=4:shadowy=5:shadowcolor=0x333333:fix_bounds=1"
+            f":x=(w-text_w)/2:y=h*{yi:.4f}:enable='{en}'"
+        )
+        yi += 52 / 1920.0
+    return ",".join(parts)
 
 
 def _editing_plan_body_seconds(editing_plan: Dict[str, Any]) -> float:
@@ -345,29 +359,68 @@ def ffmpeg_extract_letterbox(
     out: Path,
     title_overlay_sec: Optional[float] = None,
     title_lines: Optional[Tuple[str, str, str]] = None,
+    local_intervals: Optional[List[Tuple[float, float]]] = None,
+    title_max_width_frac: float = 0.5,
 ) -> None:
-    """Extract segment, letterbox to 1080x1920, keep audio as AAC when present."""
+    """Extract segment, letterbox to 1080x1920, keep audio as AAC when present.
+
+    If ``local_intervals`` has multiple disjoint ranges (seconds relative to ``start``),
+    trims and concatenates before letterbox. Single interval ``(0, duration)`` uses
+    one pass.
+    """
     ffmpeg = shutil.which("ffmpeg") or "/usr/local/bin/ffmpeg"
     rate = "30000/1001"
-    vf_base = (
+    vf_scale_pad = (
         "scale=1080:-2:force_original_aspect_ratio=decrease,"
         "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x1a1512,format=yuv420p"
     )
+
+    intr = local_intervals or [(0.0, float(duration))]
+    intr = [(max(0.0, a), min(float(duration), b)) for a, b in intr if b - a > 0.04]
+    if not intr:
+        intr = [(0.0, float(duration))]
+    use_multi = len(intr) > 1 or (
+        len(intr) == 1
+        and (intr[0][0] > 0.06 or intr[0][1] < float(duration) - 0.08)
+    )
+
     use_tilt_title = bool(title_overlay_sec and title_overlay_sec > 0)
     title_chain = ""
+    out_tight = sum(b - a for a, b in intr)
+    d_color = f"{max(0.01, float(out_tight)):.6f}".rstrip("0").rstrip(".") or "0.01"
+
     if use_tilt_title:
         l1, l2, sub = title_lines or (
             DEFAULT_OVERLAY_LINE1,
             DEFAULT_OVERLAY_LINE2,
             DEFAULT_BRAND_LINE,
         )
-        t1 = out.parent / f"{out.stem}_title_line1.txt"
-        t2 = out.parent / f"{out.stem}_title_line2.txt"
-        t3 = out.parent / f"{out.stem}_title_brand.txt"
-        t1.write_text((l1 or "").strip() + "\n", encoding="utf-8")
-        t2.write_text((l2 or "").strip() + "\n", encoding="utf-8")
-        t3.write_text((sub or "").strip() + "\n", encoding="utf-8")
-        title_chain = _title_overlay_drawtext_chain(float(title_overlay_sec), t1, t2, t3)
+        fp = _default_rounded_title_font()
+        hook_lines, brand_lines = layout_hook_and_brand(
+            l1 or "",
+            l2 or "",
+            sub or "",
+            font_path=fp,
+            frame_width=1080,
+            max_width_fraction=title_max_width_frac,
+            fs_main=_TITLE_FS_MAIN,
+            fs_brand=_TITLE_FS_SUB,
+        )
+        if not brand_lines and (sub or "").strip():
+            brand_lines = [(sub or "").strip()]
+        hook_paths: List[Path] = []
+        for i, h in enumerate(hook_lines):
+            p = out.parent / f"{out.stem}_hook_{i}.txt"
+            p.write_text(h.strip() + "\n", encoding="utf-8")
+            hook_paths.append(p)
+        brand_paths: List[Path] = []
+        for i, b in enumerate(brand_lines):
+            p = out.parent / f"{out.stem}_brand_{i}.txt"
+            p.write_text(b.strip() + "\n", encoding="utf-8")
+            brand_paths.append(p)
+        title_chain = _title_overlay_drawtext_chain(
+            float(title_overlay_sec), hook_paths, brand_paths
+        )
 
     has_audio = _ffprobe_has_audio(src)
     cmd: List[str] = [
@@ -388,12 +441,86 @@ def ffmpeg_extract_letterbox(
             "anullsrc=channel_layout=stereo:sample_rate=48000",
         ]
 
+    if use_multi and not use_tilt_title:
+        v_parts: List[str] = []
+        a_parts: List[str] = []
+        for i, (ls, le) in enumerate(intr):
+            v_parts.append(
+                f"[0:v]trim=start={ls:.3f}:end={le:.3f},setpts=PTS-STARTPTS[v{i}];"
+            )
+        nv = len(intr)
+        vconcat = "".join(f"[v{i}]" for i in range(nv)) + f"concat=n={nv}:v=1:a=0[vc];"
+        vchain = "".join(v_parts) + vconcat + f"[vc]{vf_scale_pad}[outv]"
+        if has_audio:
+            for i, (ls, le) in enumerate(intr):
+                a_parts.append(
+                    f"[0:a]atrim=start={ls:.3f}:end={le:.3f},asetpts=PTS-STARTPTS[a{i}];"
+                )
+            achain = "".join(a_parts) + "".join(f"[a{i}]" for i in range(nv)) + f"concat=n={nv}:v=0:a=1[outa]"
+            fc = vchain + ";" + achain
+        else:
+            fc = vchain
+        cmd += ["-filter_complex", fc, "-map", "[outv]", "-r", rate]
+        if has_audio:
+            cmd += ["-map", "[outa]"]
+        else:
+            cmd += ["-map", "1:a:0"]
+        cmd += [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+        if has_audio:
+            cmd += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
+        else:
+            cmd += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
+        cmd.append(str(out))
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return
+
+    if use_multi and use_tilt_title:
+        v_parts: List[str] = []
+        a_parts: List[str] = []
+        for i, (ls, le) in enumerate(intr):
+            v_parts.append(
+                f"[0:v]trim=start={ls:.3f}:end={le:.3f},setpts=PTS-STARTPTS[v{i}];"
+            )
+        nv = len(intr)
+        vconcat = "".join(f"[v{i}]" for i in range(nv)) + f"concat=n={nv}:v=1:a=0[vc];"
+        if has_audio:
+            for i, (ls, le) in enumerate(intr):
+                a_parts.append(
+                    f"[0:a]atrim=start={ls:.3f}:end={le:.3f},asetpts=PTS-STARTPTS[a{i}];"
+                )
+            achain = "".join(a_parts) + "".join(f"[a{i}]" for i in range(nv)) + f"concat=n={nv}:v=0:a=1[aud];"
+        else:
+            achain = ""
+        middle = "".join(v_parts) + vconcat
+        if has_audio:
+            middle += achain
+        tilt = _TITLE_TILT_RAD
+        rw, rh = _TITLE_ROT_W, _TITLE_ROT_H
+        middle += f"[vc]{vf_scale_pad}[bg];color=c=black@0:s=1080x1920:d={d_color}:r={rate},format=yuva420p,{title_chain},rotate={tilt}:fillcolor=black@0:ow={rw}:oh={rh}[tx];[bg][tx]overlay=(W-w)/2:(H-h)/2:format=auto[vout]"
+        cmd += ["-filter_complex", middle, "-map", "[vout]", "-r", rate, "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p"]
+        if has_audio:
+            cmd += ["-map", "[aud]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
+        else:
+            cmd += ["-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-shortest"]
+        cmd.append(str(out))
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return
+
+    # Single slice (no internal concat)
     if use_tilt_title:
-        d_color = f"{max(0.01, float(duration)):.6f}".rstrip("0").rstrip(".") or "0.01"
         tilt = _TITLE_TILT_RAD
         rw, rh = _TITLE_ROT_W, _TITLE_ROT_H
         fc = (
-            f"[0:v]{vf_base}[bg];"
+            f"[0:v]{vf_scale_pad}[bg];"
             f"color=c=black@0:s=1080x1920:d={d_color}:r={rate},format=yuva420p,"
             f"{title_chain},rotate={tilt}:fillcolor=black@0:ow={rw}:oh={rh}[tx];"
             f"[bg][tx]overlay=(W-w)/2:(H-h)/2:format=auto[vout]"
@@ -417,7 +544,7 @@ def ffmpeg_extract_letterbox(
     else:
         cmd += [
             "-vf",
-            vf_base,
+            vf_scale_pad,
             "-r",
             rate,
             "-c:v",
@@ -503,12 +630,17 @@ def main() -> int:
         default=4,
         help="Max .MOV clips to analyze (0 = all); order by file creation time",
     )
-    ap.add_argument("--target", type=float, default=30.0, help="Target duration seconds (soft)")
+    ap.add_argument(
+        "--target",
+        type=float,
+        default=30.0,
+        help="Soft duration (seconds). Default planning budget; with --flexible-duration, used as a loose floor hint for Grok while fill uses --max-total-sec.",
+    )
     ap.add_argument(
         "--hard-cap-mult",
         type=float,
         default=1.1,
-        help="Hard max total body duration = target * this (default 1.1 → 33s for 30s target)",
+        help="With default mode: hard max = min(target×this, max-total-sec). Ignored when --flexible-duration (ceiling is max-total-sec only).",
     )
     ap.add_argument("--no-grok", action="store_true", help="Force local ranking only")
     ap.add_argument(
@@ -537,7 +669,45 @@ def main() -> int:
         default=DEFAULT_BRAND_LINE,
         help="Third overlay line under hook (default: Agroverse; use \"\" to clear)",
     )
+    ap.add_argument(
+        "--no-grok-overlay-title",
+        action="store_true",
+        help="Do not call Grok for opening hook; use first-clip transcript heuristic only",
+    )
+    ap.add_argument(
+        "--out-suffix",
+        type=str,
+        default="",
+        help="Append to generated folder name (e.g. 60s) so --target changes do not overwrite another render",
+    )
+    ap.add_argument(
+        "--max-total-sec",
+        type=float,
+        default=120.0,
+        help="Absolute ceiling on body duration after trim (default 120). With --flexible-duration, also the planning/top-up budget.",
+    )
+    ap.add_argument(
+        "--flexible-duration",
+        action="store_true",
+        help="Let runtime follow the edit (MMR/Grok + padding) up to --max-total-sec; do not cluster around --target. Trim only if over max-total-sec.",
+    )
+    ap.add_argument(
+        "--no-tighten-pauses",
+        action="store_true",
+        help="Disable inter-word dead-air tightening (Whisper word gaps) inside each extract",
+    )
+    ap.add_argument(
+        "--title-max-width-frac",
+        type=float,
+        default=0.5,
+        help="Max fraction of frame width (1080) for wrapped title lines (default 0.5)",
+    )
     args = ap.parse_args()
+    plan_budget = (
+        float(args.max_total_sec)
+        if args.flexible_duration
+        else float(args.target)
+    )
 
     root = Path(__file__).resolve().parent
     os.chdir(root)
@@ -556,7 +726,19 @@ def main() -> int:
         movs = movs[: args.limit]
     movs = sort_paths_by_creation_time(movs)
 
-    out_dir = root / "uploads" / "generated" / f"folder_short_{folder.name.replace(' ', '_')}"
+    if args.flexible_duration:
+        print(
+            f"Flexible duration: planning/top-up budget {plan_budget:.1f}s "
+            f"(hard trim cap {float(args.max_total_sec):.1f}s; --target {args.target} is a loose floor hint)"
+        )
+
+    base_out = f"folder_short_{folder.name.replace(' ', '_')}"
+    suf = (args.out_suffix or "").strip()
+    if suf:
+        safe = re.sub(r"[^\w\-.]+", "_", suf).strip("._-")
+        if safe:
+            base_out = f"{base_out}_{safe}"
+    out_dir = root / "uploads" / "generated" / base_out
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("Analyzing", len(movs), "clips (Whisper + YOLO + scene + motion)...")
@@ -608,10 +790,28 @@ def main() -> int:
                         "taste nibs, brew, sip hot chocolate, people commenting — avoid one-note repetition."
                     )
                     extra_ctx = None
+                if args.flexible_duration:
+                    td_min = int(
+                        max(
+                            15,
+                            min(
+                                float(args.target) * 0.5,
+                                float(args.max_total_sec) * 0.35,
+                            ),
+                        )
+                    )
+                    td_max = int(float(args.max_total_sec))
+                else:
+                    td_min = int(max(15, args.target - 5))
+                    td_max = int(
+                        min(float(args.target) + 5.0, float(args.max_total_sec))
+                    )
+                if td_min > td_max:
+                    td_min = td_max
                 plan = analyze_video_segments(
                     bundle,
-                    target_duration_min=int(max(15, args.target - 5)),
-                    target_duration_max=int(args.target + 5),
+                    target_duration_min=td_min,
+                    target_duration_max=td_max,
                     user_direction=user_dir,
                     additional_context=extra_ctx,
                 )
@@ -624,11 +824,14 @@ def main() -> int:
             print("Grok failed:", e, "; using local rank.")
     # Title is drawn on the first video segment (no separate title card); full target is body.
     title_s = 0.0
-    body_budget = max(5.0, float(args.target) - title_s)
-    title_on_first_sec = min(3.0, float(args.target) * 0.12)
+    body_budget = max(5.0, plan_budget - title_s)
+    # Short on-screen time: large type + tight copy; avoid long burns that expose clipping.
+    title_on_first_sec = min(
+        1.85, max(1.05, min(plan_budget, 90.0) * 0.052)
+    )
 
     if plan is None:
-        plan = local_editing_plan(analyses, target_seconds=args.target)
+        plan = local_editing_plan(analyses, target_seconds=plan_budget)
         (out_dir / "local_plan.json").write_text(
             json.dumps(plan, indent=2, default=str), encoding="utf-8"
         )
@@ -638,7 +841,7 @@ def main() -> int:
             print("Editing plan body under target; topping up with local rank + timeline fill.")
             plan = local_editing_plan(
                 analyses,
-                target_seconds=args.target,
+                target_seconds=plan_budget,
                 seed_from_editing_plan=ep0,
                 metadata_override=plan.get("metadata"),
             )
@@ -653,8 +856,16 @@ def main() -> int:
     reorder_plan_chronologically(plan, path_by_file)
     print("Applying speech tail padding (0.5–1.0s, filler/pause guarded)...")
     apply_tail_padding_to_plan(plan, analyses_by_file, path_by_file)
-    cap_body = float(args.target) * float(args.hard_cap_mult)
-    print(f"Trimming to hard cap {cap_body:.2f}s if needed...")
+    if args.flexible_duration:
+        cap_body = float(args.max_total_sec)
+    else:
+        cap_body = min(
+            float(args.target) * float(args.hard_cap_mult),
+            float(args.max_total_sec),
+        )
+    print(
+        f"Trimming to hard cap {cap_body:.2f}s (max_total_sec={args.max_total_sec}) if needed..."
+    )
     trim_plan_to_duration_ceiling(plan, cap_body)
 
     ep = plan.get("editing_plan") or {}
@@ -684,9 +895,56 @@ def main() -> int:
             title_tuple = (t1, t2, brand)
             print(f"Title overlay (manual): {t1!r} / {t2!r} — {brand!r}")
         else:
-            l1, l2 = overlay_lines_from_first_clip(first_spec, analyses_by_file)
-            title_tuple = (l1, l2, brand)
-            print(f"Title overlay (transcript): {l1!r} / {l2!r} — {brand!r}")
+            used_grok = False
+            blob = build_full_transcript_context(analyses)
+            tr0 = first_spec.get("time_range") or {}
+            vf0 = str(first_spec.get("video_file") or "")
+            an0 = analyses_by_file.get(vf0)
+            open_snip = ""
+            if an0:
+                open_snip = collect_transcript_in_window(
+                    an0,
+                    float(tr0.get("start", 0)),
+                    float(tr0.get("end", 0)),
+                )
+            tmpl = (args.template or "").strip()
+            hint = f"User template keyword: {tmpl}. Match arc when possible." if tmpl else ""
+            if (
+                not args.no_grok_overlay_title
+                and get_grok_api_key()
+                and blob.strip()
+            ):
+                try:
+                    got = grok_overlay_title_lines(
+                        blob, open_snip, template_hint=hint
+                    )
+                    if got:
+                        gl1, gl2, ang = got
+                        title_tuple = (gl1, gl2, brand)
+                        used_grok = True
+                        (out_dir / "grok_overlay_title.json").write_text(
+                            json.dumps(
+                                {"line1": gl1, "line2": gl2, "angle": ang},
+                                indent=2,
+                                ensure_ascii=False,
+                            )
+                            + "\n",
+                            encoding="utf-8",
+                        )
+                        print(
+                            f"Title overlay (Grok, {ang}): {gl1!r} / {gl2!r} — {brand!r}"
+                        )
+                except Exception as e:
+                    print(
+                        "Grok overlay title failed:",
+                        e,
+                        "; using first-clip transcript fallback.",
+                        file=sys.stderr,
+                    )
+            if not used_grok:
+                l1, l2 = overlay_lines_from_first_clip(first_spec, analyses_by_file)
+                title_tuple = (l1, l2, brand)
+                print(f"Title overlay (transcript fallback): {l1!r} / {l2!r} — {brand!r}")
 
     for idx, sid in enumerate(order, start=1):
         spec = by_id.get(sid)
@@ -705,12 +963,24 @@ def main() -> int:
         overlay: Optional[float] = None
         use_title_lines: Optional[Tuple[str, str, str]] = None
         if not first_clip_done:
-            overlay = min(title_on_first_sec, max(1.5, dur * 0.35))
+            overlay = min(title_on_first_sec, max(0.95, dur * 0.17))
             use_title_lines = title_tuple
             first_clip_done = True
+        loc_iv: Optional[List[Tuple[float, float]]] = None
+        if not args.no_tighten_pauses:
+            an_i = analyses_by_file.get(str(vf))
+            if an_i:
+                loc_iv = local_keep_intervals_simple(an_i, start, end)
         print(f"  extract {vf} {start:.1f}-{end:.1f}s -> {outp.name}")
         ffmpeg_extract_letterbox(
-            src, start, dur, outp, title_overlay_sec=overlay, title_lines=use_title_lines
+            src,
+            start,
+            dur,
+            outp,
+            title_overlay_sec=overlay,
+            title_lines=use_title_lines,
+            local_intervals=loc_iv,
+            title_max_width_frac=float(args.title_max_width_frac),
         )
         parts.append(outp)
 

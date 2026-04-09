@@ -97,8 +97,8 @@ def transcript_to_two_lines(text: str) -> Tuple[str, str]:
     t = _norm(text)
     if len(t) < 3:
         return "", ""
-    # Tuned for ~64px font, 1080 width
-    max_first, max_second = 22, 26
+    # Tuned for ~96px drawtext on 1080-wide vertical (keep lines short; avoids side clip).
+    max_first, max_second = 18, 20
     return _split_at_boundary(t, max_first, max_second)
 
 

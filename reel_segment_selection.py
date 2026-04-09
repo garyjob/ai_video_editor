@@ -75,6 +75,42 @@ _AWE_SUBSTRINGS = (
     "spectacular",
 )
 
+# Transcript cues that often co-occur with visible smiles / excited delivery (Reels-friendly).
+_REACTION_SUBSTRINGS = (
+    "smile",
+    "smiling",
+    "laugh",
+    "laughing",
+    "giggle",
+    "haha",
+    "ha ha",
+    "hehe",
+    "excited",
+    "exciting",
+    "that's amazing",
+    "that is amazing",
+    "so happy",
+    "love it",
+    "love this",
+    "yes!",
+    "yeah!",
+    "yay",
+    "oh my god",
+    "oh my gosh",
+)
+
+_PERSON_OBJECT_NAMES = frozenset(
+    {
+        "person",
+        "people",
+        "face",
+        "man",
+        "woman",
+        "boy",
+        "girl",
+    }
+)
+
 
 def _normalize_text(s: str) -> str:
     if not s:
@@ -108,6 +144,38 @@ def social_hook_scores(text: str, duration_sec: float) -> Tuple[float, float, fl
         dens = min(1.0, wc / max(2.0, duration_sec * 2.2))
     combined = min(0.28, 0.55 * max(h, a) + 0.12 * dens)
     return h, a, combined
+
+
+def reaction_face_hint_score(text: str) -> float:
+    """Boost segments whose transcript suggests smiling / excitement (social-style delivery)."""
+    t = _normalize_text(text)
+    if not t:
+        return 0.0
+    acc = 0.0
+    for ph in _REACTION_SUBSTRINGS:
+        if ph in t:
+            acc += 1.0
+    return min(0.20, acc * 0.055)
+
+
+def person_visibility_boost(seg: Dict[str, Any]) -> float:
+    """
+    Boost when YOLO-like objects suggest on-camera people (COCO 'person', etc.).
+    Coarse proxy for "show faces"; does not detect expression.
+    """
+    n = 0
+    for o in seg.get("objects") or []:
+        if not isinstance(o, dict):
+            continue
+        name = str(o.get("name") or "").strip().lower()
+        if name in _PERSON_OBJECT_NAMES or name == "person":
+            try:
+                conf = float(o.get("confidence", 0.5))
+            except (TypeError, ValueError):
+                conf = 0.5
+            if conf >= 0.30:
+                n += 1
+    return min(0.22, 0.065 * float(n))
 
 
 def segment_plain_text(seg: Dict[str, Any]) -> str:
@@ -213,7 +281,9 @@ def build_pick_candidates(
             text = segment_plain_text(seg)
             humor, awe, hook = social_hook_scores(text, raw_dur)
             editor = float(seg.get("editor_score", seg.get("quality_score", 0.5)))
-            rel = editor * 0.78 + hook
+            react = reaction_face_hint_score(text)
+            person = person_visibility_boost(seg)
+            rel = editor * 0.70 + hook + react + person
             rel = min(1.0, max(0.0, rel))
             toks = token_set(text)
             out.append(
